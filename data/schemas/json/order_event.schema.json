@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "order_event.schema.json",
+  "title": "OrderEvent",
+  "description": "Order lifecycle event. File contract and EventBridge detail body. Money is a decimal string.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "order_id",
+    "customer_id",
+    "currency",
+    "total_amount",
+    "items"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "event_id": { "type": "string", "minLength": 1 },
+    "event_type": {
+      "type": "string",
+      "enum": ["OrderPlaced", "OrderPaid", "OrderShipped", "OrderCancelled"]
+    },
+    "occurred_at": { "type": "string", "minLength": 20 },
+    "order_id": { "type": "string", "minLength": 1 },
+    "customer_id": { "type": "string", "minLength": 1 },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "total_amount": { "type": "string", "pattern": "^[0-9]+\\.[0-9]{2}$" },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/line" }
+    }
+  },
+  "$defs": {
+    "line": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product_id", "quantity", "unit_price"],
+      "properties": {
+        "product_id": { "type": "string", "minLength": 1 },
+        "quantity": { "type": "integer", "minimum": 1 },
+        "unit_price": { "type": "string", "pattern": "^[0-9]+\\.[0-9]{2}$" }
+      }
+    }
+  }
+}

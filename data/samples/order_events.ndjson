@@ -1,0 +1,2 @@
+{"schema_version":1,"event_id":"evt_1001","event_type":"OrderPlaced","occurred_at":"2026-01-15T14:03:00Z","order_id":"ord_1001","customer_id":"cus_1001","currency":"USD","total_amount":"24.00","items":[{"product_id":"prd_2001","quantity":2,"unit_price":"12.00"}]}
+{"schema_version":1,"event_id":"evt_1002","event_type":"OrderPaid","occurred_at":"2026-01-15T14:05:00Z","order_id":"ord_1001","customer_id":"cus_1001","currency":"USD","total_amount":"24.00","items":[{"product_id":"prd_2001","quantity":2,"unit_price":"12.00"}]}
