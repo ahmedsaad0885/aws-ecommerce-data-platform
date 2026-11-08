@@ -1,0 +1,38 @@
+{
+  "type": "record",
+  "name": "OrderEvent",
+  "namespace": "ecommerce.orders",
+  "doc": "Stream twin of schemas/json/order_event.schema.json. Keep the fields aligned.",
+  "fields": [
+    { "name": "schema_version", "type": "int" },
+    { "name": "event_id", "type": "string" },
+    {
+      "name": "event_type",
+      "type": {
+        "type": "enum",
+        "name": "OrderEventType",
+        "symbols": ["OrderPlaced", "OrderPaid", "OrderShipped", "OrderCancelled"]
+      }
+    },
+    { "name": "occurred_at", "type": "string", "doc": "ISO-8601 UTC" },
+    { "name": "order_id", "type": "string" },
+    { "name": "customer_id", "type": "string" },
+    { "name": "currency", "type": "string", "doc": "ISO-4217 code" },
+    { "name": "total_amount", "type": "string", "doc": "Decimal string, two fraction digits" },
+    {
+      "name": "items",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "OrderLine",
+          "fields": [
+            { "name": "product_id", "type": "string" },
+            { "name": "quantity", "type": "int" },
+            { "name": "unit_price", "type": "string" }
+          ]
+        }
+      }
+    }
+  ]
+}

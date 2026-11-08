@@ -1,0 +1,13 @@
+# Data contracts
+
+Schemas and synthetic samples for the orders domain. They are the input to the first ELT milestone. CI checks that every JSON file and every NDJSON line parses. It does not apply SQL and it does not call AWS.
+
+| Path | What it is |
+| --- | --- |
+| `schemas/json/` | Canonical file contracts (JSON Schema draft 2020-12). |
+| `schemas/avro/order_event.avsc` | Stream twin of the order event. Keep it aligned with the JSON Schema. |
+| `schemas/sql/ops_postgres.sql` | Serving tables for PostgreSQL. |
+| `schemas/sql/gold.sql` | Athena mart stub. The bucket location is a placeholder. |
+| `samples/` | Tiny synthetic records. Safe to commit. Do not replace them with a production extract. |
+
+Field meanings, money, and the event envelope are documented in [docs/data-model.md](../docs/data-model.md).
