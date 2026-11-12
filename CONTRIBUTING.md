@@ -7,9 +7,9 @@ The data path is the product. Dashboards can live elsewhere later. Changes land 
 1. Branch from `main`.
 2. Keep the change reviewable. A new service, a schema change, or a module change should be its own pull request once the scaffold is in.
 3. Open a pull request using the template.
-4. Wait for CI. GitHub Actions runs Terraform `fmt` and `validate` with `-backend=false`, a structure check, a Python compile of the stubs, and markdown lint. The pipeline workflow is a placeholder for future data tests.
+4. Wait for CI. GitHub Actions runs Terraform `fmt` and `validate` with `-backend=false`, a structure check, a Python compile, and markdown lint. The pipeline workflow installs pytest, runs the gold-order tests, transforms `data/samples/order_events.ndjson`, and fails the job when that gold row does not match the contract. Neither workflow has AWS credentials or a `terraform apply` step.
 
-`make check` runs the same checks locally. It needs Terraform 1.10 or newer and Python 3.12 or newer. It does not need AWS credentials.
+`make check` runs the same checks locally. It needs Terraform 1.10 or newer and Python 3.12 or newer. It does not need AWS credentials. `make pipeline` runs the gold-order transform and its tests. That target needs pytest, which it installs from `pipelines/requirements-dev.txt`.
 
 ## What stays out of git
 

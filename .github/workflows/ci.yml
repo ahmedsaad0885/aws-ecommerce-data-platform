@@ -39,8 +39,8 @@ jobs:
       - name: Structure, JSON, links, secret scan
         run: python3 scripts/check_repo.py
 
-      - name: Compile Python stubs
-        run: python3 -m compileall -q services
+      - name: Compile Python
+        run: python3 -m compileall -q services pipelines
 
       - name: Markdown lint
         run: npx --yes markdownlint-cli2

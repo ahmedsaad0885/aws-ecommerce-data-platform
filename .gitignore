@@ -28,6 +28,9 @@ __pycache__/
 .venv/
 venv/
 
+# Local gold output from the batch transform
+pipelines/out/
+
 # Editors
 .idea/
 .vscode/

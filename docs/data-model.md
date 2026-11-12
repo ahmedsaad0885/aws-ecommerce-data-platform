@@ -76,7 +76,7 @@ Order status values line up as follows.
 | `OrderShipped` | `shipped` |
 | `OrderCancelled` | `cancelled` |
 
-The latest event for an `order_id` wins in silver and in PostgreSQL. Bronze keeps every event.
+The latest event for an `order_id` wins status, customer, currency, total, and the line list in silver and in PostgreSQL. Order those events by `occurred_at`, then `event_id`. `placed_at` stays on the earliest `OrderPlaced` time, and `order_date` is the UTC date of `placed_at`. Bronze keeps every event.
 
 ## Catalog projection
 
@@ -84,8 +84,11 @@ DynamoDB attributes follow the product schema: `product_id` (partition key), `ca
 
 ## What the first ELT has to prove
 
-Using [data/samples/order_events.ndjson](../data/samples/order_events.ndjson):
+Using [data/samples/order_events.ndjson](../data/samples/order_events.ndjson), the local job in [pipelines/](../pipelines/) writes one `gold_orders` row:
 
-- Two events for `ord_1001` collapse to one silver order with status `paid` and total `24.00`.
-- The line `prd_2001` quantity `2` at `12.00` is preserved.
-- A gold row carries `item_count = 1` (count of lines, not unit quantity) and `order_date = 2026-01-15`.
+- Two events for `ord_1001` collapse to one order with status `paid` and total `24.00`.
+- `placed_at` is the `OrderPlaced` time, `2026-01-15T14:03:00Z`. The later paid event changes status and leaves `placed_at` where it is.
+- `order_date` is the UTC date of `placed_at`, `2026-01-15`.
+- `item_count` is `1`. The order has one line. Quantity `2` on `prd_2001` stays on that line, and the two events still produce one gold row.
+
+The line (`prd_2001`, quantity `2`, unit price `12.00`) stays on the event. A silver line table is a later write. Gold carries the count of lines. The job that produces the row is described in [pipelines/README.md](../pipelines/README.md).
