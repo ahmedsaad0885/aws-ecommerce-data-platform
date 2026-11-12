@@ -68,6 +68,10 @@ Example tfvars still plan the full stack. Do not apply them for this account. Pa
 
 That run reuses the state bucket, plans, rejects a plan that would change the lake or add anything outside the catalog and workgroup, then applies that plan. Until you type the confirm string, AWS is unchanged.
 
+## How raw files are landed
+
+[`.github/workflows/land-dev-raw.yml`](../.github/workflows/land-dev-raw.yml) is a different workflow. It does not run Terraform. A pull request generates the small `test` scale and prints the three object keys and their sizes. Nothing is uploaded. The upload is **Actions → Land dev raw data → Run workflow**, on `main`, with confirm set to `land-dev-raw`. It puts gzip NDJSON at the fixed keys under `raw/order-events/`, `raw/product-catalog/`, and `raw/reviews/`. It does not write `gold/`, `athena-results/`, or the state bucket, and it does not create IAM. The walkthrough is [docs/landing-data.md](../docs/landing-data.md).
+
 ## Cost
 
 An empty bucket has no minimum charge. You pay for what is stored and for requests. A few zero-byte prefix markers and the Terraform state object stay in the noise, and this free-plan account draws on the credit described for new accounts rather than a running database or a stream. Pricing: [Amazon S3 pricing](https://aws.amazon.com/s3/pricing/). The free-plan credit note is in the [Amazon S3 FAQs](https://aws.amazon.com/s3/faqs/).
