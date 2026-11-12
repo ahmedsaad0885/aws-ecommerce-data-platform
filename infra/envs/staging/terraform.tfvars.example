@@ -16,3 +16,13 @@ db_multi_az              = false
 db_backup_retention_days = 3
 log_retention_days       = 14
 bedrock_model_id         = "amazon.nova-micro-v1:0"
+
+enable_networking    = true
+enable_data_lake     = true
+enable_analytics     = true
+enable_relational    = true
+enable_nosql         = true
+enable_streaming     = true
+enable_api           = true
+enable_llm           = true
+enable_observability = true

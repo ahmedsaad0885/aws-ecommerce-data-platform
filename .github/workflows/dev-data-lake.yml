@@ -1,0 +1,216 @@
+# Dev S3 lake only. Access keys from repo secrets. No OIDC and no role assumption.
+# pull_request plans and never applies. Apply is workflow_dispatch on main
+# after typing apply-dev-lake. Merging this workflow does not create resources.
+name: Dev data lake
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type apply-dev-lake to bootstrap state and apply the dev S3 lake. Any other value plans only."
+        required: true
+        default: plan
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-data-lake-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  plan:
+    name: plan dev lake
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm != 'apply-dev-lake')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # issues: write is the permission that can post a pull request conversation comment.
+      # actions: write is required to upload the plan text.
+      pull-requests: write
+      issues: write
+      actions: write
+    env:
+      AWS_EC2_METADATA_DISABLED: "true"
+      TF_IN_AUTOMATION: "true"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "1.17.1"
+          terraform_wrapper: false
+
+      - name: Terraform fmt and validate without a backend
+        run: |
+          terraform fmt -check -recursive
+          terraform -chdir=infra init -backend=false -input=false
+          terraform -chdir=infra validate
+
+      - name: Repo checks, including lake-only dev tfvars
+        run: python3 scripts/check_repo.py
+
+      - name: Require AWS access key secrets
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "::error::Repo secrets AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must both be set."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-north-1
+          allowed-account-ids: "737334244495"
+          force-skip-oidc: "true"
+          disable-retry: "true"
+          output-credentials: "false"
+
+      - name: Check state bucket without creating it
+        id: state
+        run: |
+          mode="$(bash scripts/dev_state_bucket.sh status)"
+          echo "mode=${mode}" >> "$GITHUB_OUTPUT"
+          echo "State bucket status: ${mode}"
+
+      - name: Require a known state-bucket status
+        if: steps.state.outputs.mode != 'exists' && steps.state.outputs.mode != 'missing'
+        run: |
+          echo "Unexpected state bucket status: '${{ steps.state.outputs.mode }}'"
+          exit 1
+
+      - name: Plan the dev lake
+        if: steps.state.outputs.mode == 'exists'
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra init -input=false -reconfigure -backend-config=envs/dev/backend.hcl
+          terraform -chdir=infra plan -input=false -lock-timeout=120s -var-file=envs/dev/terraform.tfvars -out=dev-lake.tfplan
+          terraform -chdir=infra show -no-color dev-lake.tfplan | tee dev-lake-plan.txt
+          terraform -chdir=infra show -json dev-lake.tfplan > dev-lake-plan.json
+          python3 scripts/check_lake_plan.py dev-lake-plan.json --expect-bucket ecom-737334244495-dev-lake
+
+      - name: Explain a missing state bucket
+        if: steps.state.outputs.mode == 'missing'
+        run: |
+          cat > dev-lake-plan.txt <<'EOF'
+          Remote plan skipped: state bucket ecom-737334244495-dev-tfstate does not exist yet.
+          fmt and validate already ran with -backend=false.
+          After merge, run this workflow from the main branch and type apply-dev-lake.
+          That run creates the state bucket in eu-north-1, then applies only the dev lake
+          (ecom-737334244495-dev-lake). It does not apply on this pull request.
+          EOF
+          cat dev-lake-plan.txt
+
+      - name: Comment the plan on the pull request
+        if: github.event_name == 'pull_request' && (success() || failure()) && hashFiles('dev-lake-plan.txt') != ''
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const fs = require('fs');
+            let text = fs.readFileSync('dev-lake-plan.txt', 'utf8').replaceAll('```', "'''");
+            if (text.length > 60000) {
+              text = text.slice(0, 60000) + '\n\n...[truncated]';
+            }
+            const body = [
+              '## Dev data lake plan (eu-north-1)',
+              '',
+              'This job does not apply. Apply is a manual run of this workflow on `main` with confirm `apply-dev-lake`.',
+              '',
+              '```',
+              text.trim(),
+              '```',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      - name: Upload plan text
+        if: always() && hashFiles('dev-lake-plan.txt') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dev-lake-plan
+          path: dev-lake-plan.txt
+
+  reject-off-main:
+    name: refuse apply off main
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'apply-dev-lake' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse
+        run: |
+          echo "Refusing to apply from ${{ github.ref }}."
+          echo "Run Dev data lake from the main branch after this pull request merges, and type apply-dev-lake."
+          exit 1
+
+  apply:
+    name: apply dev lake
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'apply-dev-lake' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: dev-data-lake-apply
+      cancel-in-progress: false
+    env:
+      AWS_EC2_METADATA_DISABLED: "true"
+      TF_IN_AUTOMATION: "true"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: "1.17.1"
+          terraform_wrapper: false
+
+      - name: Terraform fmt and validate without a backend
+        run: |
+          terraform fmt -check -recursive
+          terraform -chdir=infra init -backend=false -input=false
+          terraform -chdir=infra validate
+
+      - name: Repo checks, including lake-only dev tfvars
+        run: python3 scripts/check_repo.py
+
+      - name: Require AWS access key secrets
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "::error::Repo secrets AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must both be set."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-north-1
+          allowed-account-ids: "737334244495"
+          force-skip-oidc: "true"
+          disable-retry: "true"
+          output-credentials: "false"
+
+      - name: Bootstrap the state bucket
+        run: bash scripts/dev_state_bucket.sh ensure
+
+      - name: Plan and apply the dev lake only
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra init -input=false -reconfigure -backend-config=envs/dev/backend.hcl
+          terraform -chdir=infra plan -input=false -lock-timeout=120s -var-file=envs/dev/terraform.tfvars -out=dev-lake.tfplan
+          terraform -chdir=infra show -no-color dev-lake.tfplan | tee dev-lake-plan.txt
+          terraform -chdir=infra show -json dev-lake.tfplan > dev-lake-plan.json
+          python3 scripts/check_lake_plan.py dev-lake-plan.json --expect-bucket ecom-737334244495-dev-lake
+          terraform -chdir=infra apply -input=false -lock-timeout=120s dev-lake.tfplan

@@ -1,3 +1,5 @@
+# Template for a full-stack dev plan. The first apply uses the committed
+# terraform.tfvars in this directory: eu-north-1, data lake only.
 aws_region  = "us-east-1"
 environment = "dev"
 # Replace before any future apply. The lake bucket name is global.
@@ -16,3 +18,13 @@ db_multi_az              = false
 db_backup_retention_days = 1
 log_retention_days       = 7
 bedrock_model_id         = "amazon.nova-micro-v1:0"
+
+enable_networking    = true
+enable_data_lake     = true
+enable_analytics     = true
+enable_relational    = true
+enable_nosql         = true
+enable_streaming     = true
+enable_api           = true
+enable_llm           = true
+enable_observability = true

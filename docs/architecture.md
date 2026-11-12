@@ -112,9 +112,9 @@ The catalog table is a projection. The lake and the PostgreSQL `products` table 
 | API log retention | 7 days | 14 days | 30 days |
 | VPC CIDR in the example | `10.10.0.0/16` | `10.20.0.0/16` | `10.30.0.0/16` |
 
-RDS subnet groups need two availability zones even when Multi-AZ is off. The examples always declare two private subnets. Prod is the configuration that runs a standby.
+RDS subnet groups need two availability zones even when Multi-AZ is off. The examples always declare two private subnets. Prod is the configuration that runs a standby. The committed dev tfvars keeps those subnet values only so the variables stay valid. It does not create the VPC or the database.
 
-State locking uses the S3 lock file (`use_lockfile` on the backend example), which needs Terraform 1.10 or newer. CI calls `terraform init -backend=false` and never reads or writes state.
+State locking uses the S3 lock file (`use_lockfile`), which needs Terraform 1.10 or newer. There is no DynamoDB lock table. The dev state bucket is `ecom-737334244495-dev-tfstate` in `eu-north-1`. The fmt/validate job still calls `terraform init -backend=false` and does not read state. The dev data lake workflow is the only automation that reads or writes that state, and only when someone runs it from `main`.
 
 ## Network and cost shape
 
@@ -144,10 +144,12 @@ If this skeleton were applied later, the relational instance is the main idle bi
 
 **SageMaker stays off.** `enable_sagemaker_endpoint` defaults to false and the module rejects true. An endpoint is a billable resource and needs model artifacts that this repo does not have.
 
-**Passwords and account ids.** No account id, access key, or database password is an input. Examples use `example-ecom` as a name prefix and `REPLACE_ME_STATE_BUCKET` as a state bucket. Both must be replaced before any future apply. S3 bucket names are global, so the prefix has to be unique.
+**Secrets stay out of inputs.** No access key or database password is a Terraform input. The dev name prefix includes account `737334244495` so the lake bucket is globally unique: `ecom-737334244495-dev-lake`. Example files still use `example-ecom` and `REPLACE_ME_STATE_BUCKET`.
+
+**First apply is the dev lake only.** `enable_*` defaults to true, so example tfvars still plan the full skeleton. `infra/envs/dev/terraform.tfvars` turns every flag off except the data lake, in `eu-north-1`. Analytics stays off: that module creates an IAM role the bucket does not need, and this account can reject new roles until advanced IAM is activated. Apply is a manual workflow run with the existing access keys. It does not use OIDC. A pull request plans and does not apply. A merge does not apply.
 
 **API authentication is a feature, not a default.** Health is public if the stack is ever applied. Entity routes are absent until an authorizer exists. WAF can sit in front of that public API at the same time.
 
 ## Intentionally absent
 
-NAT gateways, interface VPC endpoints, MSK, Glue jobs and crawlers, QuickSight or any other BI product, API authentication, WAF, budgets, customer-managed KMS keys, and any `terraform apply` automation.
+NAT gateways, interface VPC endpoints, MSK, Glue jobs and crawlers, QuickSight or any other BI product, API authentication, WAF, budgets, customer-managed KMS keys, and an automatic `terraform apply` on push or merge. The dev S3 lake is the one manual apply.

@@ -1,4 +1,4 @@
-# Copy to a gitignored backend.hcl only when a state bucket exists.
+# Template. The committed backend.hcl next to this file is the dev state bucket.
 # Keep region aligned with aws_region in the matching tfvars example.
 bucket       = "REPLACE_ME_STATE_BUCKET"
 key          = "ecommerce-data-platform/dev/terraform.tfstate"
