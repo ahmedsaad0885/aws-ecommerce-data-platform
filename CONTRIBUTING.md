@@ -17,6 +17,7 @@ The data path is the product. Dashboards can live elsewhere later. Changes land 
 - `backend.hcl` copied from the examples (bucket names live there once an account exists)
 - `*.tfvars` copied from the examples
 - `.terraform/`, state files, and Lambda zip builds
+- `data/generated/`, the beefy output of `make dataset`
 
 RDS master passwords are not Terraform inputs. The relational module sets `manage_master_user_password`, so a future apply would store the password in Secrets Manager.
 
@@ -26,4 +27,6 @@ CI may format-check and validate configuration. CI has no AWS credentials and no
 
 ## Contracts
 
-`data/schemas/` is the starting contract for orders, reviews, and the product catalog. A change to a field updates the JSON Schema and the Avro record in the same pull request, plus a synthetic sample when the sample would otherwise be invalid.
+`data/schemas/` is the starting contract for orders, reviews, and the product catalog, and for the airport streams. A change to a field updates the JSON Schema and the Avro record in the same pull request, plus a synthetic sample when the sample would otherwise be invalid.
+
+`data/samples/ecom/` and `data/samples/airports/` are the `sample` scale at seed 42. Regenerate them with `make dataset-sample` and do not hand-edit the rows. The beefy files stay out of git.

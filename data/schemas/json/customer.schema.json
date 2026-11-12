@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "customer.schema.json",
+  "title": "Customer",
+  "description": "Synthetic customer reference extract. Emails are fictional and use example.com. This is not a stream event.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "customer_id",
+    "full_name",
+    "email",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "customer_id": { "type": "string", "pattern": "^cus_[0-9]{6}$" },
+    "full_name": { "type": "string", "pattern": "^[A-Za-z]+ [A-Za-z]+$" },
+    "email": { "type": "string", "pattern": "^cus_[0-9]{6}@example\\.com$" },
+    "created_at": { "type": "string", "minLength": 20 },
+    "updated_at": { "type": "string", "minLength": 20 }
+  }
+}

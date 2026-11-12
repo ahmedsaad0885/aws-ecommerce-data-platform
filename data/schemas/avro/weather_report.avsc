@@ -1,0 +1,38 @@
+{
+  "type": "record",
+  "name": "WeatherReport",
+  "namespace": "ecommerce.airports",
+  "doc": "Stream twin of schemas/json/weather_report.schema.json. Hourly airport observation.",
+  "fields": [
+    { "name": "schema_version", "type": "int" },
+    { "name": "report_id", "type": "string" },
+    { "name": "airport_iata", "type": "string" },
+    { "name": "airport_icao", "type": "string" },
+    { "name": "observed_at", "type": "string", "doc": "ISO-8601 UTC, on the hour" },
+    { "name": "wind_dir_deg", "type": "int" },
+    { "name": "wind_speed_kt", "type": "int" },
+    { "name": "wind_gust_kt", "type": ["null", "int"], "default": null },
+    { "name": "visibility_sm", "type": "string" },
+    { "name": "ceiling_ft", "type": ["null", "int"], "default": null },
+    {
+      "name": "precip",
+      "type": {
+        "type": "enum",
+        "name": "Precip",
+        "symbols": ["none", "rain", "snow", "thunderstorm"]
+      }
+    },
+    { "name": "temp_c", "type": "string" },
+    { "name": "dewpoint_c", "type": "string" },
+    { "name": "altimeter_inhg", "type": "string" },
+    {
+      "name": "flight_category",
+      "type": {
+        "type": "enum",
+        "name": "FlightCategory",
+        "symbols": ["VFR", "MVFR", "IFR", "LIFR"]
+      }
+    },
+    { "name": "airport_closed", "type": "boolean" }
+  ]
+}

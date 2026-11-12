@@ -92,3 +92,13 @@ Using [data/samples/order_events.ndjson](../data/samples/order_events.ndjson), t
 - `item_count` is `1`. The order has one line. Quantity `2` on `prd_2001` stays on that line, and the two events still produce one gold row.
 
 The line (`prd_2001`, quantity `2`, unit price `12.00`) stays on the event. A silver line table is a later write. Gold carries the count of lines. The job that produces the row is described in [pipelines/README.md](../pipelines/README.md).
+
+## Synthetic generator
+
+The three files above stay the gold fixture. A larger fictional world is produced beside them and still validates against the same order, catalog, and review contracts, so `collapse_events` can fold it. Customers are an added reference extract, [customer.schema.json](../data/schemas/json/customer.schema.json), with the same columns as the PostgreSQL `customers` table plus `schema_version`. They are not a stream event.
+
+The generator assigns each customer one currency, so every event for an order shares it. Each event total is the sum of that event's lines. Most orders move through placed, paid, and shipped. Some stop at placed, some are cancelled, and a few are cancelled after payment. A handful change their lines between placement and payment. A handful share one timestamp across two events so `event_id` breaks the tie. The event file is time-sorted and then a few adjacent pairs are swapped. Generation, scales, and the command line are in [datasets.md](datasets.md).
+
+## Airport traffic
+
+Flight operations, passenger check-in, airport weather, fuel calculations, and reroutes are a second raw source. They do not feed the gold order transform. The model, the fuel formula, and the assumptions are in [airport-data-model.md](airport-data-model.md).

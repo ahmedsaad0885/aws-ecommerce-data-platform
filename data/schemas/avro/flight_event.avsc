@@ -1,0 +1,76 @@
+{
+  "type": "record",
+  "name": "FlightEvent",
+  "namespace": "ecommerce.airports",
+  "doc": "Stream twin of schemas/json/flight_event.schema.json. Keep the fields aligned.",
+  "fields": [
+    { "name": "schema_version", "type": "int" },
+    { "name": "event_id", "type": "string" },
+    {
+      "name": "event_type",
+      "type": {
+        "type": "enum",
+        "name": "FlightEventType",
+        "symbols": [
+          "FlightScheduled",
+          "FlightDelayed",
+          "FlightDeparted",
+          "FlightAirborne",
+          "FlightEnRoute",
+          "FlightLanded",
+          "FlightArrived",
+          "FlightCancelled",
+          "FlightRerouted"
+        ]
+      }
+    },
+    { "name": "occurred_at", "type": "string", "doc": "ISO-8601 UTC" },
+    { "name": "flight_id", "type": "string" },
+    { "name": "flight_number", "type": "string" },
+    { "name": "airline_iata", "type": "string" },
+    { "name": "tail_number", "type": "string", "doc": "Synthetic tail, not an FAA registration" },
+    { "name": "aircraft_type", "type": "string" },
+    { "name": "origin_iata", "type": "string" },
+    { "name": "origin_icao", "type": "string" },
+    { "name": "destination_iata", "type": "string" },
+    { "name": "destination_icao", "type": "string" },
+    { "name": "scheduled_departure_at", "type": "string" },
+    { "name": "scheduled_arrival_at", "type": "string" },
+    { "name": "delay_minutes", "type": "int" },
+    {
+      "name": "delay_reason",
+      "type": [
+        "null",
+        {
+          "type": "enum",
+          "name": "DelayReason",
+          "symbols": ["weather", "late_inbound", "crew", "atc", "mechanical", "airport_closure", "fuel"]
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "status",
+      "type": {
+        "type": "enum",
+        "name": "FlightStatus",
+        "symbols": [
+          "scheduled",
+          "delayed",
+          "departed",
+          "airborne",
+          "enroute",
+          "landed",
+          "arrived",
+          "cancelled",
+          "rerouted",
+          "diverted"
+        ]
+      }
+    },
+    { "name": "previous_destination_iata", "type": ["null", "string"], "default": null },
+    { "name": "alternate_iata", "type": "string" },
+    { "name": "route", "type": "string" },
+    { "name": "weather_report_id", "type": ["null", "string"], "default": null }
+  ]
+}

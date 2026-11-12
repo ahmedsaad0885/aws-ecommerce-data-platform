@@ -1,0 +1,27 @@
+{
+  "dataset": "ecommerce",
+  "synthetic": true,
+  "seed": 42,
+  "scale": "sample",
+  "start": "2026-01-01T00:00:00Z",
+  "days": 14,
+  "review_probability": "0.40",
+  "notes": [
+    "Fictional customers and reviews. Emails are <customer_id>@example.com.",
+    "order_events.ndjson is sorted by time and then a few adjacent pairs are swapped.",
+    "Each order uses one currency. Event totals equal the sum of that event's lines."
+  ],
+  "counts": {
+    "customers": 100,
+    "product_catalog": 80,
+    "order_events": 671,
+    "reviews": 194
+  },
+  "orders": 250,
+  "statuses": {
+    "placed": 17,
+    "paid": 31,
+    "shipped": 174,
+    "cancelled": 28
+  }
+}

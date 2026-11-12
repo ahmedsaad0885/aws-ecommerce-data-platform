@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "airport.schema.json",
+  "title": "Airport",
+  "description": "Public airport reference used by the traffic simulation. Coordinates are rounded, not a survey.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "iata",
+    "icao",
+    "name",
+    "city",
+    "latitude",
+    "longitude",
+    "elevation_ft"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "iata": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "icao": { "type": "string", "pattern": "^[A-Z]{4}$" },
+    "name": { "type": "string", "minLength": 1 },
+    "city": { "type": "string", "minLength": 1 },
+    "latitude": { "type": "string", "pattern": "^-?[0-9]{1,2}\\.[0-9]{4}$" },
+    "longitude": { "type": "string", "pattern": "^-?[0-9]{1,3}\\.[0-9]{4}$" },
+    "elevation_ft": { "type": "integer", "minimum": -200, "maximum": 20000 }
+  }
+}

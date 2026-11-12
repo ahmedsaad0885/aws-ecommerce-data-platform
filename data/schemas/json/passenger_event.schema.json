@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "passenger_event.schema.json",
+  "title": "PassengerEvent",
+  "description": "Synthetic passenger movement for a cabin sample. Names are fictional. There is no document number, email, or date of birth.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "passenger_id",
+    "passenger_name",
+    "flight_id",
+    "airline_iata",
+    "origin_iata",
+    "destination_iata",
+    "bags",
+    "seat"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "event_id": { "type": "string", "pattern": "^pev_[0-9]{8}$" },
+    "event_type": {
+      "type": "string",
+      "enum": ["PassengerCheckedIn", "BagDropped", "PassengerBoarded", "PassengerNoShow"]
+    },
+    "occurred_at": { "type": "string", "minLength": 20 },
+    "passenger_id": { "type": "string", "pattern": "^pax_[0-9]{7}$" },
+    "passenger_name": { "type": "string", "pattern": "^[A-Za-z]+ [A-Za-z]+$" },
+    "flight_id": { "type": "string", "minLength": 8 },
+    "airline_iata": { "type": "string", "pattern": "^[A-Z0-9]{2}$" },
+    "origin_iata": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "destination_iata": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "bags": { "type": "integer", "minimum": 0, "maximum": 3 },
+    "seat": { "type": ["string", "null"], "pattern": "^[1-9][0-9]?[A-F]$" }
+  }
+}

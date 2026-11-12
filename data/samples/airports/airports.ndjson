@@ -1,0 +1,22 @@
+{"schema_version":1,"iata":"ATL","icao":"KATL","name":"Hartsfield-Jackson Atlanta International","city":"Atlanta","latitude":"33.6407","longitude":"-84.4277","elevation_ft":1026}
+{"schema_version":1,"iata":"ORD","icao":"KORD","name":"Chicago O'Hare International","city":"Chicago","latitude":"41.9742","longitude":"-87.9073","elevation_ft":680}
+{"schema_version":1,"iata":"DFW","icao":"KDFW","name":"Dallas Fort Worth International","city":"Dallas","latitude":"32.8998","longitude":"-97.0403","elevation_ft":607}
+{"schema_version":1,"iata":"DEN","icao":"KDEN","name":"Denver International","city":"Denver","latitude":"39.8561","longitude":"-104.6737","elevation_ft":5434}
+{"schema_version":1,"iata":"LAX","icao":"KLAX","name":"Los Angeles International","city":"Los Angeles","latitude":"33.9416","longitude":"-118.4085","elevation_ft":128}
+{"schema_version":1,"iata":"SEA","icao":"KSEA","name":"Seattle-Tacoma International","city":"Seattle","latitude":"47.4502","longitude":"-122.3088","elevation_ft":433}
+{"schema_version":1,"iata":"SFO","icao":"KSFO","name":"San Francisco International","city":"San Francisco","latitude":"37.6213","longitude":"-122.3790","elevation_ft":13}
+{"schema_version":1,"iata":"LAS","icao":"KLAS","name":"Harry Reid International","city":"Las Vegas","latitude":"36.0801","longitude":"-115.1523","elevation_ft":2181}
+{"schema_version":1,"iata":"PHX","icao":"KPHX","name":"Phoenix Sky Harbor International","city":"Phoenix","latitude":"33.4373","longitude":"-112.0078","elevation_ft":1135}
+{"schema_version":1,"iata":"MSP","icao":"KMSP","name":"Minneapolis-Saint Paul International","city":"Minneapolis","latitude":"44.8848","longitude":"-93.2223","elevation_ft":841}
+{"schema_version":1,"iata":"DTW","icao":"KDTW","name":"Detroit Metropolitan Wayne County","city":"Detroit","latitude":"42.2162","longitude":"-83.3554","elevation_ft":645}
+{"schema_version":1,"iata":"BOS","icao":"KBOS","name":"Boston Logan International","city":"Boston","latitude":"42.3656","longitude":"-71.0096","elevation_ft":19}
+{"schema_version":1,"iata":"EWR","icao":"KEWR","name":"Newark Liberty International","city":"Newark","latitude":"40.6895","longitude":"-74.1745","elevation_ft":18}
+{"schema_version":1,"iata":"MIA","icao":"KMIA","name":"Miami International","city":"Miami","latitude":"25.7959","longitude":"-80.2870","elevation_ft":8}
+{"schema_version":1,"iata":"CLT","icao":"KCLT","name":"Charlotte Douglas International","city":"Charlotte","latitude":"35.2140","longitude":"-80.9431","elevation_ft":748}
+{"schema_version":1,"iata":"SLC","icao":"KSLC","name":"Salt Lake City International","city":"Salt Lake City","latitude":"40.7899","longitude":"-111.9791","elevation_ft":4227}
+{"schema_version":1,"iata":"SAN","icao":"KSAN","name":"San Diego International","city":"San Diego","latitude":"32.7338","longitude":"-117.1933","elevation_ft":17}
+{"schema_version":1,"iata":"PDX","icao":"KPDX","name":"Portland International","city":"Portland","latitude":"45.5898","longitude":"-122.5951","elevation_ft":31}
+{"schema_version":1,"iata":"AUS","icao":"KAUS","name":"Austin-Bergstrom International","city":"Austin","latitude":"30.1945","longitude":"-97.6699","elevation_ft":542}
+{"schema_version":1,"iata":"BNA","icao":"KBNA","name":"Nashville International","city":"Nashville","latitude":"36.1263","longitude":"-86.6774","elevation_ft":599}
+{"schema_version":1,"iata":"MCI","icao":"KMCI","name":"Kansas City International","city":"Kansas City","latitude":"39.2976","longitude":"-94.7139","elevation_ft":1026}
+{"schema_version":1,"iata":"STL","icao":"KSTL","name":"St. Louis Lambert International","city":"St. Louis","latitude":"38.7487","longitude":"-90.3700","elevation_ft":618}

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "flight_event.schema.json",
+  "title": "FlightEvent",
+  "description": "One lifecycle event for a flight. Times are UTC. delay_minutes is the off-block delay against scheduled_departure_at. A reroute keeps flight_id and changes destination_iata.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "flight_id",
+    "flight_number",
+    "airline_iata",
+    "tail_number",
+    "aircraft_type",
+    "origin_iata",
+    "origin_icao",
+    "destination_iata",
+    "destination_icao",
+    "scheduled_departure_at",
+    "scheduled_arrival_at",
+    "delay_minutes",
+    "delay_reason",
+    "status",
+    "previous_destination_iata",
+    "alternate_iata",
+    "route",
+    "weather_report_id"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "event_id": { "type": "string", "pattern": "^fev_[0-9]{8}$" },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "FlightScheduled",
+        "FlightDelayed",
+        "FlightDeparted",
+        "FlightAirborne",
+        "FlightEnRoute",
+        "FlightLanded",
+        "FlightArrived",
+        "FlightCancelled",
+        "FlightRerouted"
+      ]
+    },
+    "occurred_at": { "type": "string", "minLength": 20 },
+    "flight_id": { "type": "string", "pattern": "^flt_[0-9]{8}_[A-Z0-9]{2}[0-9]{4}_[A-Z]{3}_[A-Z]{3}$" },
+    "flight_number": { "type": "string", "pattern": "^[A-Z0-9]{2}[0-9]{4}$" },
+    "airline_iata": { "type": "string", "pattern": "^[A-Z0-9]{2}$" },
+    "tail_number": { "type": "string", "pattern": "^T-[A-Z0-9]{2}[0-9]{4}$" },
+    "aircraft_type": { "type": "string", "pattern": "^[A-Z0-9]{3,4}$" },
+    "origin_iata": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "origin_icao": { "type": "string", "pattern": "^[A-Z]{4}$" },
+    "destination_iata": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "destination_icao": { "type": "string", "pattern": "^[A-Z]{4}$" },
+    "scheduled_departure_at": { "type": "string", "minLength": 20 },
+    "scheduled_arrival_at": { "type": "string", "minLength": 20 },
+    "delay_minutes": { "type": "integer", "minimum": 0, "maximum": 2000 },
+    "delay_reason": {
+      "type": ["string", "null"],
+      "enum": ["weather", "late_inbound", "crew", "atc", "mechanical", "airport_closure", "fuel", null]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "delayed",
+        "departed",
+        "airborne",
+        "enroute",
+        "landed",
+        "arrived",
+        "cancelled",
+        "rerouted",
+        "diverted"
+      ]
+    },
+    "previous_destination_iata": { "type": ["string", "null"], "pattern": "^[A-Z]{3}$" },
+    "alternate_iata": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "route": { "type": "string", "pattern": "^[A-Z]{4} DCT [A-Z]{4}$" },
+    "weather_report_id": { "type": ["string", "null"], "pattern": "^wx_[A-Z]{4}_[0-9]{10}$" }
+  }
+}
