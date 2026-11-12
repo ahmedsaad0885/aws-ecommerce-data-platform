@@ -1,0 +1,32 @@
+{
+  "dataset": "airports",
+  "synthetic": true,
+  "seed": 42,
+  "scale": "sample",
+  "start": "2026-04-01T00:00:00Z",
+  "days": 2,
+  "flights_per_day": 24,
+  "pax_per_flight": 5,
+  "notes": [
+    "Fictional passengers and tail numbers. Airport and airline codes are public identifiers.",
+    "Passenger rows are a cabin sample, not a full manifest.",
+    "Fuel figures follow pipelines/datasets/fuel.py and are rounded half-up to 0.01 kg."
+  ],
+  "counts": {
+    "airports": 22,
+    "airlines": 8,
+    "aircraft_types": 7,
+    "aircraft": 45,
+    "weather_reports": 1716,
+    "flight_events": 298,
+    "fuel_records": 51,
+    "passenger_events": 582
+  },
+  "scenarios": {
+    "normal": 30,
+    "delay": 13,
+    "cancel": 2,
+    "reroute_pre": 2,
+    "divert": 1
+  }
+}

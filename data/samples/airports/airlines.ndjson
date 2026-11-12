@@ -1,0 +1,8 @@
+{"schema_version":1,"iata":"DL","icao":"DAL","name":"Delta Air Lines","hub_iata":"ATL"}
+{"schema_version":1,"iata":"AA","icao":"AAL","name":"American Airlines","hub_iata":"DFW"}
+{"schema_version":1,"iata":"UA","icao":"UAL","name":"United Airlines","hub_iata":"ORD"}
+{"schema_version":1,"iata":"WN","icao":"SWA","name":"Southwest Airlines","hub_iata":"DEN"}
+{"schema_version":1,"iata":"AS","icao":"ASA","name":"Alaska Airlines","hub_iata":"SEA"}
+{"schema_version":1,"iata":"B6","icao":"JBU","name":"JetBlue Airways","hub_iata":"BOS"}
+{"schema_version":1,"iata":"NK","icao":"NKS","name":"Spirit Airlines","hub_iata":"ATL"}
+{"schema_version":1,"iata":"F9","icao":"FFT","name":"Frontier Airlines","hub_iata":"DEN"}

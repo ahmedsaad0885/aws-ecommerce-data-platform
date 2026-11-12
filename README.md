@@ -17,6 +17,8 @@ Shop systems remain the source of checkouts and catalog edits. This platform tak
 
 The first cut is batch. Streaming resources are declared so the path is visible, and the consumer is a later milestone.
 
+Two synthetic datasets sit in front of that path: a larger e-commerce world that still matches the order contracts, and an airport traffic history (flights, passengers, weather, fuel, reroutes). Both are generated locally. See [docs/datasets.md](docs/datasets.md).
+
 ## Architecture
 
 Full diagram, service map, and the reasoning behind each choice: [docs/architecture.md](docs/architecture.md). Entity definitions and contracts: [docs/data-model.md](docs/data-model.md).
@@ -50,7 +52,7 @@ v1 is the local gold transform. The next lakehouse step is to point that same jo
 
 ```text
 infra/                 Terraform root, modules, and per-environment examples
-pipelines/             Local gold-order transform and its tests
+pipelines/             Local gold-order transform, dataset generators, and tests
 services/api/          Lambda stub for the read API
 services/llm/          Review-summary contract, no model call
 data/schemas/          JSON Schema, Avro, and SQL contracts
@@ -72,6 +74,8 @@ That formats Terraform, runs `terraform init -backend=false` and `terraform vali
 `make validate` is the Terraform slice on its own.
 
 `make pipeline` installs pytest, runs the order-transform tests, writes `pipelines/out/gold_orders.ndjson` from `data/samples/order_events.ndjson`, and checks that file. Details: [pipelines/README.md](pipelines/README.md).
+
+`make dataset` writes the beefy e-commerce and airport histories under `data/generated/`. That directory is gitignored. `make dataset-ecom` and `make dataset-airports` run one side. `make dataset-sample` rewrites the small committed snapshots at seed 42. Scales and overrides: [docs/datasets.md](docs/datasets.md).
 
 There is no local cloud emulator. A local PostgreSQL loaded from `data/schemas/sql/ops_postgres.sql` is a reasonable v2 step, still without cloud credentials.
 

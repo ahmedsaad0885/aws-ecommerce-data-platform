@@ -98,6 +98,10 @@ Athena is the wrong tool for a single-order API lookup: latency and per-query by
 
 The catalog table is a projection. The lake and the PostgreSQL `products` table are the copies this platform curates. DynamoDB is for key access and a category listing, which is a poor fit for a join-heavy order model. An order-status key-value projection can be a second table when a consumer exists. It should not replace the order tables.
 
+## Synthetic datasets
+
+The orders domain above is what the Terraform skeleton describes. Two local generators add teaching data without changing that skeleton: a larger e-commerce history that matches the existing order contracts, and an airport traffic history (flights, a cabin sample of passengers, hourly weather, fuel calculations, and reroutes). Beefy files are gitignored. They are not registered in Glue in this repository. Generation and the airport model: [datasets.md](datasets.md), [airport-data-model.md](airport-data-model.md).
+
 ## Environments
 
 `dev`, `staging`, and `prod` share one root module, [infra/main.tf](../infra/main.tf). Each environment has its own example tfvars and its own state key under [infra/envs/](../infra/envs/). The environment name is a required variable, so a plan command names the target.

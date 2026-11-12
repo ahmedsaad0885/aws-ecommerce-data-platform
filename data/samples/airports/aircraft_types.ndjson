@@ -1,0 +1,7 @@
+{"schema_version":1,"icao":"A320","name":"Airbus A320","seats":180,"cruise_tas_kt":447,"burn_kg_per_hour":"2500.00","taxi_fuel_kg":"200.00","reserve_minutes":45}
+{"schema_version":1,"icao":"A20N","name":"Airbus A320neo","seats":186,"cruise_tas_kt":447,"burn_kg_per_hour":"2100.00","taxi_fuel_kg":"180.00","reserve_minutes":45}
+{"schema_version":1,"icao":"A321","name":"Airbus A321","seats":196,"cruise_tas_kt":447,"burn_kg_per_hour":"2700.00","taxi_fuel_kg":"230.00","reserve_minutes":45}
+{"schema_version":1,"icao":"B738","name":"Boeing 737-800","seats":175,"cruise_tas_kt":453,"burn_kg_per_hour":"2600.00","taxi_fuel_kg":"220.00","reserve_minutes":45}
+{"schema_version":1,"icao":"B739","name":"Boeing 737-900","seats":178,"cruise_tas_kt":453,"burn_kg_per_hour":"2750.00","taxi_fuel_kg":"230.00","reserve_minutes":45}
+{"schema_version":1,"icao":"B38M","name":"Boeing 737 MAX 8","seats":178,"cruise_tas_kt":453,"burn_kg_per_hour":"2200.00","taxi_fuel_kg":"190.00","reserve_minutes":45}
+{"schema_version":1,"icao":"E75L","name":"Embraer 175","seats":76,"cruise_tas_kt":430,"burn_kg_per_hour":"1100.00","taxi_fuel_kg":"120.00","reserve_minutes":45}

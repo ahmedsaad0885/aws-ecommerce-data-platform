@@ -36,6 +36,9 @@ venv/
 # Local gold output from the batch transform
 pipelines/out/
 
+# Beefy synthetic output. Regenerate with make dataset.
+data/generated/
+
 # Editors
 .idea/
 .vscode/

@@ -56,6 +56,10 @@ python3 -m pipelines.orders check \
 
 Silver line output (the `prd_2001` quantity and unit price as their own rows) is a later write. This job proves the gold order grain. Field meanings: [docs/data-model.md](../docs/data-model.md).
 
+## Synthetic datasets
+
+`python -m pipelines.datasets` writes the e-commerce world and the airport traffic history. The modules are standard library only. `make dataset` writes the beefy scale under `data/generated/`. pytest uses the `test` scale and checks the committed `sample` snapshots. The gold transform is unchanged: a generated order file is valid input, and the tiny sample above is still the fixture `make pipeline` checks. Commands and scales: [docs/datasets.md](../docs/datasets.md). Airport rules: [docs/airport-data-model.md](../docs/airport-data-model.md).
+
 ### Next
 
 After a dev lake is applied, point this same transform at objects under `raw/order-events/` and write `gold/orders/` partitioned by `order_date`. Glue can run the module later. The IAM role for a job is already on the analytical module. This milestone stops at the local file.

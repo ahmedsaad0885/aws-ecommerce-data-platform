@@ -16,6 +16,7 @@ The data path is the product. Dashboards can live elsewhere later. Changes land 
 - AWS access keys, passwords, and `.pem` files
 - `backend.hcl` and `*.tfvars` copied from the examples for staging or prod
 - `.terraform/`, state files, and Lambda zip builds
+- `data/generated/`, the beefy output of `make dataset`
 
 `infra/envs/dev/terraform.tfvars` and `infra/envs/dev/backend.hcl` are committed. They name the dev lake and the state bucket, including account `737334244495`. They do not contain keys.
 
@@ -29,4 +30,6 @@ The dev data lake workflow may read the existing access-key secrets. It plans th
 
 ## Contracts
 
-`data/schemas/` is the starting contract for orders, reviews, and the product catalog. A change to a field updates the JSON Schema and the Avro record in the same pull request, plus a synthetic sample when the sample would otherwise be invalid.
+`data/schemas/` is the starting contract for orders, reviews, and the product catalog, and for the airport streams. A change to a field updates the JSON Schema and the Avro record in the same pull request, plus a synthetic sample when the sample would otherwise be invalid.
+
+`data/samples/ecom/` and `data/samples/airports/` are the `sample` scale at seed 42. Regenerate them with `make dataset-sample` and do not hand-edit the rows. The beefy files stay out of git.

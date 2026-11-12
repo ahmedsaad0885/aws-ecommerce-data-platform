@@ -1,0 +1,27 @@
+{
+  "type": "record",
+  "name": "PassengerEvent",
+  "namespace": "ecommerce.airports",
+  "doc": "Stream twin of schemas/json/passenger_event.schema.json. Names are fictional.",
+  "fields": [
+    { "name": "schema_version", "type": "int" },
+    { "name": "event_id", "type": "string" },
+    {
+      "name": "event_type",
+      "type": {
+        "type": "enum",
+        "name": "PassengerEventType",
+        "symbols": ["PassengerCheckedIn", "BagDropped", "PassengerBoarded", "PassengerNoShow"]
+      }
+    },
+    { "name": "occurred_at", "type": "string", "doc": "ISO-8601 UTC" },
+    { "name": "passenger_id", "type": "string" },
+    { "name": "passenger_name", "type": "string" },
+    { "name": "flight_id", "type": "string" },
+    { "name": "airline_iata", "type": "string" },
+    { "name": "origin_iata", "type": "string" },
+    { "name": "destination_iata", "type": "string" },
+    { "name": "bags", "type": "int" },
+    { "name": "seat", "type": ["null", "string"], "default": null }
+  ]
+}
