@@ -1,4 +1,4 @@
-.PHONY: fmt validate check pipeline dataset dataset-ecom dataset-airports dataset-sample
+.PHONY: fmt validate check pipeline dataset dataset-ecom dataset-airports dataset-sample land-dry-run
 
 TF_DIR := infra
 DATASET_SEED ?= 42
@@ -30,6 +30,10 @@ dataset-ecom:
 
 dataset-airports:
 	python3 -m pipelines.datasets airports --scale $(AIRPORT_SCALE) --seed $(DATASET_SEED) --output data/generated/airports
+
+# Print the dev-lake keys and gzip sizes for the small test scale. No AWS calls.
+land-dry-run:
+	python3 scripts/land_dev_raw.py plan --scale test --seed 42
 
 # Committed snapshots. Seed 42 and the sample preset, with count overrides cleared.
 dataset-sample:
