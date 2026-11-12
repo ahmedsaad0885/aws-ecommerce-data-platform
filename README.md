@@ -2,7 +2,7 @@
 
 Data path for retail orders on AWS: land source data, shape it, and serve it. The domain is customers, products, orders, and reviews. A BI owner can sit on the analytical tables later. This repository is the platform those tables come from.
 
-This repository holds the architecture, the contracts, a Terraform skeleton, and a local gold transform for order events. It does not deploy anything, and it does not need AWS credentials.
+This repository holds the architecture, the contracts, a Terraform skeleton, and a local gold transform for order events. Pull requests and merges do not deploy the platform. A manual workflow can create the dev S3 lake in `eu-north-1`. See [infra/README.md](infra/README.md).
 
 ## Vision
 
@@ -56,7 +56,7 @@ services/llm/          Review-summary contract, no model call
 data/schemas/          JSON Schema, Avro, and SQL contracts
 data/samples/          Synthetic records
 docs/                  Architecture and data model
-.github/workflows/     Validate on pull request; gold-order pipeline tests
+.github/workflows/     Validate and pipeline tests; dev-lake plan; manual dev-lake apply
 ```
 
 ## Run checks locally

@@ -3,6 +3,8 @@
 *.tfstate
 *.tfstate.*
 *.tfplan
+dev-lake-plan.txt
+dev-lake-plan.json
 crash.log
 crash.*.log
 override.tf
@@ -10,11 +12,14 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
-# Real environment values stay local. Examples are named *.example and stay tracked.
+# Real environment values stay local, except the committed dev lake names
+# (no secrets) in infra/envs/dev/terraform.tfvars and backend.hcl.
 *.tfvars
 *.tfvars.json
 !*.tfvars.example
+!infra/envs/dev/terraform.tfvars
 backend.hcl
+!infra/envs/dev/backend.hcl
 *.auto.tfvars
 
 # Packaged Lambda build output

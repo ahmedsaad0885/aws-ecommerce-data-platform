@@ -14,6 +14,85 @@ variable "environment" {
   }
 }
 
+variable "enable_networking" {
+  description = "Create the VPC module. Defaults on so example tfvars stay a full-stack plan. The committed dev tfvars turns this off."
+  type        = bool
+  default     = true
+}
+
+variable "enable_data_lake" {
+  description = "Create the S3 lake bucket. Defaults on. This is the only module the committed dev tfvars enables."
+  type        = bool
+  default     = true
+}
+
+variable "enable_analytics" {
+  description = "Create Glue, Athena, and the Glue IAM role. Defaults on so example tfvars stay a full-stack plan. Off for the first dev apply: that role is not required for the bucket, and IAM role creation can fail on this account."
+  type        = bool
+  default     = true
+
+  validation {
+    condition     = !var.enable_analytics || var.enable_data_lake
+    error_message = "enable_analytics requires enable_data_lake."
+  }
+}
+
+variable "enable_relational" {
+  description = "Create the PostgreSQL instance. Defaults on so example tfvars stay a full-stack plan. The committed dev tfvars turns this off."
+  type        = bool
+  default     = true
+
+  validation {
+    condition     = !var.enable_relational || var.enable_networking
+    error_message = "enable_relational requires enable_networking."
+  }
+}
+
+variable "enable_nosql" {
+  description = "Create the DynamoDB catalog table. Defaults on so example tfvars stay a full-stack plan. The committed dev tfvars turns this off."
+  type        = bool
+  default     = true
+}
+
+variable "enable_streaming" {
+  description = "Create EventBridge, Kinesis, and Firehose. Defaults on so example tfvars stay a full-stack plan. The committed dev tfvars turns this off."
+  type        = bool
+  default     = true
+
+  validation {
+    condition     = !var.enable_streaming || var.enable_data_lake
+    error_message = "enable_streaming requires enable_data_lake."
+  }
+}
+
+variable "enable_api" {
+  description = "Create the API Lambda and HTTP API. Defaults on so example tfvars stay a full-stack plan. The committed dev tfvars turns this off."
+  type        = bool
+  default     = true
+
+  validation {
+    condition     = !var.enable_api || var.enable_nosql
+    error_message = "enable_api requires enable_nosql."
+  }
+}
+
+variable "enable_llm" {
+  description = "Create the Bedrock invoke role. Defaults on so example tfvars stay a full-stack plan. The committed dev tfvars turns this off."
+  type        = bool
+  default     = true
+}
+
+variable "enable_observability" {
+  description = "Create the alarm topic and alarms. Defaults on so example tfvars stay a full-stack plan. The committed dev tfvars turns this off."
+  type        = bool
+  default     = true
+
+  validation {
+    condition     = !var.enable_observability || (var.enable_relational && var.enable_streaming)
+    error_message = "enable_observability requires enable_relational and enable_streaming."
+  }
+}
+
 variable "name_prefix" {
   description = "Short prefix for resource names. Must be globally unique for the lake bucket before any future apply. Example value is example-ecom."
   type        = string

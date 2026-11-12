@@ -2,13 +2,15 @@
 """Structure checks that do not need AWS credentials.
 
 Confirms required scaffold paths exist, JSON and NDJSON parse, relative
-markdown links resolve, and obvious secret material is absent.
+markdown links resolve, obvious secret material is absent, and the
+committed dev config stays a lake-only eu-north-1 apply.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -22,6 +24,8 @@ REQUIRED = [
     "infra/main.tf",
     "infra/envs/dev/terraform.tfvars.example",
     "infra/envs/dev/backend.hcl.example",
+    "infra/envs/dev/terraform.tfvars",
+    "infra/envs/dev/backend.hcl",
     "infra/envs/staging/terraform.tfvars.example",
     "infra/envs/staging/backend.hcl.example",
     "infra/envs/prod/terraform.tfvars.example",
@@ -37,6 +41,9 @@ REQUIRED = [
     "data/samples/product_catalog.ndjson",
     "services/api/src/handler.py",
     "services/llm/src/summarize.py",
+    ".github/workflows/dev-data-lake.yml",
+    "scripts/dev_state_bucket.sh",
+    "scripts/check_lake_plan.py",
 ]
 
 SKIP_DIRS = {".git", ".terraform", ".venv", "venv", "__pycache__", ".build"}
@@ -53,6 +60,7 @@ TEXT_SUFFIXES = {
     ".example",
     ".hcl",
     ".txt",
+    ".tfvars",
 }
 LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 SECRETS = [
@@ -119,6 +127,171 @@ def check_links() -> list[str]:
     return errors
 
 
+DEV_TFVARS = {
+    "aws_region": "eu-north-1",
+    "environment": "dev",
+    "name_prefix": "ecom-737334244495",
+    "enable_networking": "false",
+    "enable_data_lake": "true",
+    "enable_analytics": "false",
+    "enable_relational": "false",
+    "enable_nosql": "false",
+    "enable_streaming": "false",
+    "enable_api": "false",
+    "enable_llm": "false",
+    "enable_observability": "false",
+}
+
+DEV_BACKEND = {
+    "bucket": "ecom-737334244495-dev-tfstate",
+    "key": "ecommerce-data-platform/dev/terraform.tfstate",
+    "region": "eu-north-1",
+    "encrypt": "true",
+    "use_lockfile": "true",
+}
+
+
+def _assignments(text: str) -> dict[str, str]:
+    found: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        match = re.match(r"^([A-Za-z0-9_]+)\s*=\s*(.+)$", line)
+        if not match:
+            continue
+        found[match.group(1)] = match.group(2).strip().strip('"').strip("'")
+    return found
+
+
+def scope_errors(tfvars: str, backend: str) -> list[str]:
+    errors = []
+    tf_values = _assignments(tfvars)
+    be_values = _assignments(backend)
+
+    for key, expected in DEV_TFVARS.items():
+        actual = tf_values.get(key)
+        if actual != expected:
+            errors.append(f"terraform.tfvars {key}={actual!r}, expected {expected!r}")
+    if "us-east-1" in tfvars or "us-east-1" in backend:
+        errors.append("dev tfvars and backend.hcl must not use us-east-1")
+    for az in ("eu-north-1a", "eu-north-1b"):
+        if az not in tfvars:
+            errors.append(f"terraform.tfvars missing {az}")
+
+    lake = f"{tf_values.get('name_prefix', '')}-{tf_values.get('environment', '')}-lake"
+    if lake != "ecom-737334244495-dev-lake":
+        errors.append(f"lake bucket would be {lake!r}")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", lake):
+        errors.append(f"lake bucket name is not a valid S3 name: {lake!r}")
+
+    for key, expected in DEV_BACKEND.items():
+        actual = be_values.get(key)
+        if actual != expected:
+            errors.append(f"backend.hcl {key}={actual!r}, expected {expected!r}")
+    state_bucket = be_values.get("bucket", "")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", state_bucket):
+        errors.append(f"state bucket name is not a valid S3 name: {state_bucket!r}")
+    if re.search(r"dynamodb_table", backend):
+        errors.append("dev backend.hcl must not set a DynamoDB lock table")
+    return errors
+
+
+def check_dev_lake_scope() -> list[str]:
+    tfvars_path = ROOT / "infra/envs/dev/terraform.tfvars"
+    backend_path = ROOT / "infra/envs/dev/backend.hcl"
+    if not tfvars_path.is_file() or not backend_path.is_file():
+        return []
+    return scope_errors(
+        tfvars_path.read_text(encoding="utf-8"),
+        backend_path.read_text(encoding="utf-8"),
+    )
+
+
+def check_dev_workflow() -> list[str]:
+    path = ROOT / ".github/workflows/dev-data-lake.yml"
+    if not path.is_file():
+        return []
+    text = path.read_text(encoding="utf-8")
+    errors = []
+    for banned in ("id-token:", "role-to-assume", "\npush:"):
+        if banned in text:
+            errors.append(f"dev-data-lake workflow contains {banned.strip()!r}")
+    for required in (
+        "workflow_dispatch:",
+        "pull_request:",
+        "apply-dev-lake",
+        "force-skip-oidc",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "eu-north-1",
+    ):
+        if required not in text:
+            errors.append(f"dev-data-lake workflow is missing {required}")
+    if text.count("terraform -chdir=infra apply") != 1:
+        errors.append("dev-data-lake workflow must contain exactly one terraform apply")
+    return errors
+
+
+def self_test_guards() -> list[str]:
+    errors = []
+    tfvars_path = ROOT / "infra/envs/dev/terraform.tfvars"
+    backend_path = ROOT / "infra/envs/dev/backend.hcl"
+    if tfvars_path.is_file() and backend_path.is_file():
+        good_tf = tfvars_path.read_text(encoding="utf-8")
+        good_be = backend_path.read_text(encoding="utf-8")
+        if scope_errors(good_tf, good_be):
+            errors.append("committed dev files failed the scope self-test")
+        relational = good_tf.replace("enable_relational    = false", "enable_relational    = true", 1)
+        if relational == good_tf or not any("enable_relational" in item for item in scope_errors(relational, good_be)):
+            errors.append("scope self-test did not reject enable_relational=true")
+        east = good_tf.replace("eu-north-1", "us-east-1")
+        if not scope_errors(east, good_be):
+            errors.append("scope self-test did not reject us-east-1")
+        if not any("DynamoDB" in item for item in scope_errors(good_tf, good_be + '\ndynamodb_table = "locks"\n')):
+            errors.append("scope self-test did not reject a DynamoDB lock table")
+
+    script = ROOT / "scripts/dev_state_bucket.sh"
+    if script.is_file():
+        parsed = subprocess.run(
+            ["bash", str(script), "parse"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if parsed.returncode != 0 or parsed.stdout.strip() != "ecom-737334244495-dev-tfstate eu-north-1":
+            errors.append(
+                "state bucket parse failed: "
+                f"exit {parsed.returncode} stdout={parsed.stdout!r} stderr={parsed.stderr!r}"
+            )
+        bad = subprocess.run(
+            ["bash", str(script), "parse"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+            env={"DEV_BACKEND_HCL": str(_write_bad_backend()), "PATH": "/usr/bin:/bin"},
+        )
+        if bad.returncode == 0:
+            errors.append("state bucket parse accepted a non-dev backend file")
+
+    plan_check = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/check_lake_plan.py"), "--self-test"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if plan_check.returncode != 0:
+        errors.append(plan_check.stdout.strip() or plan_check.stderr.strip() or "lake plan self-test failed")
+    return errors
+
+
+def _write_bad_backend() -> Path:
+    path = ROOT / ".build" / "bad-backend.hcl"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text('bucket = "other-bucket"\nregion = "us-east-1"\n', encoding="utf-8")
+    return path
+
+
 def check_secrets() -> list[str]:
     errors = []
     for path in _iter_files():
@@ -132,13 +305,21 @@ def check_secrets() -> list[str]:
 
 
 def main() -> int:
-    errors = check_required() + check_json() + check_links() + check_secrets()
+    errors = (
+        check_required()
+        + check_json()
+        + check_links()
+        + check_secrets()
+        + check_dev_lake_scope()
+        + check_dev_workflow()
+        + self_test_guards()
+    )
     if errors:
         print("Repository check failed:")
         for error in errors:
             print(f"  {error}")
         return 1
-    print("Repository check ok (paths, JSON, relative links, secret scan).")
+    print("Repository check ok (paths, JSON, links, secrets, dev lake scope).")
     return 0
 
 
