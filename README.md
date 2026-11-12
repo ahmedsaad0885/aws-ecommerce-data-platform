@@ -2,7 +2,7 @@
 
 Data path for retail orders on AWS: land source data, shape it, and serve it. The domain is customers, products, orders, and reviews. A BI owner can sit on the analytical tables later. This repository is the platform those tables come from.
 
-This is a scaffold. It contains architecture, contracts, a Terraform skeleton, and CI that validates structure. It does not deploy anything, and it does not need AWS credentials.
+This repository holds the architecture, the contracts, a Terraform skeleton, and a local gold transform for order events. It does not deploy anything, and it does not need AWS credentials.
 
 ## Vision
 
@@ -38,25 +38,25 @@ Environments are `dev`, `staging`, and `prod`. They share one Terraform root. Ea
 
 | Stage | What "done" means |
 | --- | --- |
-| v0 Scaffold | This pull request. Docs, contracts, Terraform that validates, CI, Python stubs. |
-| v1 Batch lakehouse | A local Python transform turns `data/samples` into the gold column contract, with a test in the pipeline workflow. Still no account required. |
+| v0 Scaffold | Docs, contracts, Terraform that validates, CI, Python stubs. |
+| v1 Batch lakehouse | A local Python transform turns `data/samples/order_events.ndjson` into one gold order row per order. The pipeline workflow asserts that row. Still no account required. |
 | v2 APIs | Authentication in front of order and product reads. RDS loaded from gold. Catalog projection filled. A network path to RDS chosen deliberately, because the current Lambda is outside the VPC. |
 | v3 Streaming | A consumer on the order stream updates silver and a low-latency order status without waiting for the batch. |
 | v4 LLM | Bedrock writes a short summary onto reviews, bounded by the prompt contract in `services/llm`. |
 
-The milestone after merge is **v1**. Prove the order contract on synthetic samples locally, and wire that assertion into `.github/workflows/pipelines.yml`.
+v1 is the local gold transform. The next lakehouse step is to point that same job at `raw/order-events/` and write `gold/orders/` after a dev lake is applied. v2 remains the read API and the load into PostgreSQL.
 
 ## Repository layout
 
 ```text
 infra/                 Terraform root, modules, and per-environment examples
-pipelines/             Batch ELT home (README only in v0)
+pipelines/             Local gold-order transform and its tests
 services/api/          Lambda stub for the read API
 services/llm/          Review-summary contract, no model call
 data/schemas/          JSON Schema, Avro, and SQL contracts
 data/samples/          Synthetic records
 docs/                  Architecture and data model
-.github/workflows/     Validate on pull request; pipeline placeholder
+.github/workflows/     Validate on pull request; gold-order pipeline tests
 ```
 
 ## Run checks locally
@@ -67,11 +67,13 @@ Install Terraform 1.10 or newer (CI uses 1.17.1) and Python 3.12 or newer. From 
 make check
 ```
 
-That formats Terraform, runs `terraform init -backend=false` and `terraform validate`, checks links and JSON contracts, compiles the Python stubs, and lints markdown. No AWS account is involved.
+That formats Terraform, runs `terraform init -backend=false` and `terraform validate`, checks links and JSON contracts, compiles the Python, and lints markdown. No AWS account is involved.
 
 `make validate` is the Terraform slice on its own.
 
-There is no local cloud emulator in v0. The v1 job should read `data/samples` and write a local gold-shaped result. A local PostgreSQL loaded from `data/schemas/sql/ops_postgres.sql` is a reasonable v2 step, still without cloud credentials.
+`make pipeline` installs pytest, runs the order-transform tests, writes `pipelines/out/gold_orders.ndjson` from `data/samples/order_events.ndjson`, and checks that file. Details: [pipelines/README.md](pipelines/README.md).
+
+There is no local cloud emulator. A local PostgreSQL loaded from `data/schemas/sql/ops_postgres.sql` is a reasonable v2 step, still without cloud credentials.
 
 ## Contributing
 

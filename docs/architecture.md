@@ -52,7 +52,7 @@ flowchart TB
   llm --> rds
 ```
 
-Order lifecycle events are the only stream in this skeleton. Catalog files and reviews land as objects under `raw/` until they earn their own events. Firehose writes gzipped JSON to `raw/order-events/`, partitioned by arrival time. Batch ELT, which is the next milestone, rewrites that into bronze using the event timestamp.
+Order lifecycle events are the only stream in this skeleton. Catalog files and reviews land as objects under `raw/` until they earn their own events. Firehose writes gzipped JSON to `raw/order-events/`, partitioned by arrival time. A local transform in [pipelines/](../pipelines/) collapses sample order events into gold order rows. Rewriting lake objects (bronze from the event timestamp, then silver and gold under the bucket) waits until a dev lake is applied. That job should be this same transform pointed at `raw/order-events/`.
 
 Medallion prefixes, all in one bucket:
 

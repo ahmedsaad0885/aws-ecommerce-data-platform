@@ -3,18 +3,17 @@ name: Pipeline tests
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - "pipelines/**"
-      - "data/**"
-      - "services/**"
-      - ".github/workflows/pipelines.yml"
 
 permissions:
   contents: read
 
+concurrency:
+  group: pipelines-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  placeholder:
-    name: placeholder
+  gold-orders:
+    name: gold orders
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,9 +22,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Future pipeline tests
-        run: |
-          echo "Pipeline tests are not implemented yet."
-          echo "Next check to add: transform data/samples into the gold column contract and assert the result locally."
-          python3 scripts/check_repo.py
-          python3 -m compileall -q services
+      - name: Install test dependencies
+        run: python3 -m pip install -r pipelines/requirements-dev.txt
+
+      - name: Test collapse rules and the sample fixture
+        run: python3 -m pytest pipelines/tests -q
+
+      - name: Transform the sample into gold
+        run: python3 -m pipelines.orders transform --input data/samples/order_events.ndjson --output pipelines/out/gold_orders.ndjson
+
+      - name: Assert the gold file
+        run: python3 -m pipelines.orders check --output pipelines/out/gold_orders.ndjson
