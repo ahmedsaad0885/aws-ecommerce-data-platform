@@ -13,7 +13,7 @@ Identifiers are strings (`ord_1001`, `prd_2001`) so samples and stores agree. Th
 
 ## Money and time
 
-Events and the catalog projection carry money as decimal strings (`"12.00"`). PostgreSQL uses `NUMERIC(12, 2)`. The gold mart uses `decimal(12, 2)`. Conversion is the ELT's job. Floats are not in the contract.
+Events and the catalog projection carry money as decimal strings (`"12.00"`). PostgreSQL uses `NUMERIC(12, 2)`. The gold mart's logical type is `decimal(12, 2)`. The registered NDJSON table keeps `total_amount` as text, and the saved Athena query casts it, because Athena engine version 3 does not reliably read that string as a decimal column. Floats are not in the contract. Details: [analytics.md](analytics.md).
 
 `occurred_at` and `created_at` are ISO-8601 timestamps in UTC. Gold partitions use the UTC date of that event time. Firehose prefixes under `raw/order-events/` use arrival time, which can differ around midnight. Bronze is where the event date becomes the partition.
 
@@ -26,7 +26,7 @@ Events and the catalog projection carry money as decimal strings (`"12.00"`). Po
 | [data/schemas/json/review.schema.json](../data/schemas/json/review.schema.json) | Review file contract. |
 | [data/schemas/json/product_catalog_item.schema.json](../data/schemas/json/product_catalog_item.schema.json) | DynamoDB item shape, minus AWS attributes. |
 | [data/schemas/sql/ops_postgres.sql](../data/schemas/sql/ops_postgres.sql) | Normalized serving tables. |
-| [data/schemas/sql/gold.sql](../data/schemas/sql/gold.sql) | Athena mart columns. Stub location, not registered. |
+| [data/schemas/sql/gold.sql](../data/schemas/sql/gold.sql) | Athena mart columns. Registered by the analytics module as newline-delimited JSON. `LAKE_BUCKET` in the file is the real lake bucket at apply time. |
 
 `schema_version` is `1` on the interchange records. Bump it when a consumer cannot tolerate a change.
 

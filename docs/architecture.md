@@ -2,7 +2,7 @@
 
 This platform is the data path for an e-commerce orders domain: customers, products, orders, and reviews. Upstream shop systems stay the source of transactions. This repository copies, shapes, and serves that data for engineering use and, later, for a BI owner.
 
-Nothing here is deployed. The Terraform is a skeleton that `terraform validate` can check with no credentials.
+The dev S3 lake is already in account `737334244495`, region `eu-north-1`. The Glue Data Catalog and Athena workgroup are declared on top of that lake and are not created until a manual workflow run. The rest of the Terraform is a skeleton that `terraform validate` can check with no credentials. The catalog walkthrough is [analytics.md](analytics.md).
 
 ## Data flow
 
@@ -52,7 +52,7 @@ flowchart TB
   llm --> rds
 ```
 
-Order lifecycle events are the only stream in this skeleton. Catalog files and reviews land as objects under `raw/` until they earn their own events. Firehose writes gzipped JSON to `raw/order-events/`, partitioned by arrival time. A local transform in [pipelines/](../pipelines/) collapses sample order events into gold order rows. Rewriting lake objects (bronze from the event timestamp, then silver and gold under the bucket) waits until a dev lake is applied. That job should be this same transform pointed at `raw/order-events/`.
+Order lifecycle events are the only stream in this skeleton. Catalog files and reviews land as objects under `raw/` until they earn their own events. The catalog registers those drops at `raw/product-catalog/` and `raw/reviews/`. Firehose, when the streaming module is applied, writes gzipped JSON to `raw/order-events/year=YYYY/month=MM/day=DD/`, partitioned by arrival time. That module is off, and the raw order-event table is not partitioned yet. Land flat NDJSON directly under `raw/order-events/` for the table that exists. A local transform in [pipelines/](../pipelines/) collapses sample order events into gold order rows. The lake write of that row is `gold/orders/order_date=YYYY-MM-DD/`. The job that does the write is still local. It should be this same transform pointed at `raw/order-events/`.
 
 Medallion prefixes, all in one bucket:
 
@@ -69,8 +69,8 @@ Medallion prefixes, all in one bucket:
 | Service | Job in this domain | In this skeleton |
 | --- | --- | --- |
 | S3 | Lake for orders, catalog, and reviews | One bucket, prefixes above, encryption, versioning, public access blocked |
-| Glue | Catalog of lake tables, future job identity | Database and an IAM role. No crawler and no job |
-| Athena | Analytical SQL for the BI owner and for ad hoc work | Workgroup writing results into the lake bucket |
+| Glue | Catalog of lake tables | Database and external tables from the contracts. No crawler, no job, and no IAM role |
+| Athena | Analytical SQL for the BI owner and for ad hoc work | Workgroup on engine v3. Results in the lake bucket. A per-query scan cap. Saved queries that are not executed |
 | RDS PostgreSQL | Serving database: orders with their lines, customers, reviews | Private instance. Master password managed by Secrets Manager |
 | DynamoDB | Product catalog reads by `product_id` and by `category` | On-demand table and one GSI |
 | EventBridge | Bus for order domain events | Custom bus and a rule for placed, paid, shipped, cancelled |
@@ -118,7 +118,7 @@ The orders domain above is what the Terraform skeleton describes. Two local gene
 
 RDS subnet groups need two availability zones even when Multi-AZ is off. The examples always declare two private subnets. Prod is the configuration that runs a standby. The committed dev tfvars keeps those subnet values only so the variables stay valid. It does not create the VPC or the database.
 
-State locking uses the S3 lock file (`use_lockfile`), which needs Terraform 1.10 or newer. There is no DynamoDB lock table. The dev state bucket is `ecom-737334244495-dev-tfstate` in `eu-north-1`. The fmt/validate job still calls `terraform init -backend=false` and does not read state. The dev data lake workflow is the only automation that reads or writes that state, and only when someone runs it from `main`.
+State locking uses the S3 lock file (`use_lockfile`), which needs Terraform 1.10 or newer. There is no DynamoDB lock table. The dev state bucket is `ecom-737334244495-dev-tfstate` in `eu-north-1`. The fmt/validate job still calls `terraform init -backend=false` and does not read state. The dev lake and analytics workflow is the only automation that reads or writes that state, and only when someone runs it from `main`.
 
 ## Network and cost shape
 
@@ -138,7 +138,7 @@ If this skeleton were applied later, the relational instance is the main idle bi
 
 **RDS PostgreSQL for serving, Athena for scans.** The ops database holds the current normalized entities the API will read. Aurora is the upgrade when that database needs extra readers or serverless scaling. The instance class in the examples stays small on purpose.
 
-**Explicit schemas, no crawler.** [data/schemas/](../data/schemas/) is the contract. A crawler would invent a second one.
+**Explicit schemas, no crawler.** [data/schemas/](../data/schemas/) is the contract. A crawler would invent a second one. The dev catalog tables are that contract, registered by the analytics module. See [analytics.md](analytics.md).
 
 **EventBridge, Kinesis, and Firehose.** Order events need a bus, a buffer, and a landing zone in the lake. MSK is the alternative when a consumer standard is already Kafka. Retention on the stream is 24 hours, which is a starting buffer, not a compliance archive. The archive is the lake.
 
@@ -150,10 +150,10 @@ If this skeleton were applied later, the relational instance is the main idle bi
 
 **Secrets stay out of inputs.** No access key or database password is a Terraform input. The dev name prefix includes account `737334244495` so the lake bucket is globally unique: `ecom-737334244495-dev-lake`. Example files still use `example-ecom` and `REPLACE_ME_STATE_BUCKET`.
 
-**First apply is the dev lake only.** `enable_*` defaults to true, so example tfvars still plan the full skeleton. `infra/envs/dev/terraform.tfvars` turns every flag off except the data lake, in `eu-north-1`. Analytics stays off: that module creates an IAM role the bucket does not need, and this account can reject new roles until advanced IAM is activated. Apply is a manual workflow run with the existing access keys. It does not use OIDC. A pull request plans and does not apply. A merge does not apply.
+**Dev apply is the lake plus the catalog.** `enable_*` defaults to true, so example tfvars still plan the full skeleton. `infra/envs/dev/terraform.tfvars` turns every flag off except the data lake and analytics, in `eu-north-1`. Analytics here is the Glue database, the external tables, and the Athena workgroup. It does not create an IAM role. A future Glue job role waits until the account can create roles. Apply is a manual workflow run with the existing access keys. It does not use OIDC. A pull request plans and does not apply. A merge does not apply. The confirm string is `apply-dev-analytics`.
 
 **API authentication is a feature, not a default.** Health is public if the stack is ever applied. Entity routes are absent until an authorizer exists. WAF can sit in front of that public API at the same time.
 
 ## Intentionally absent
 
-NAT gateways, interface VPC endpoints, MSK, Glue jobs and crawlers, QuickSight or any other BI product, API authentication, WAF, budgets, customer-managed KMS keys, and an automatic `terraform apply` on push or merge. The dev S3 lake is the one manual apply.
+NAT gateways, interface VPC endpoints, MSK, Glue jobs and crawlers, Glue IAM roles, Lake Formation admin, QuickSight or any other BI product, API authentication, WAF, budgets, customer-managed KMS keys, and an automatic `terraform apply` on push or merge. The dev S3 lake is applied. The catalog and Athena workgroup are the next manual apply.

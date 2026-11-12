@@ -1,7 +1,7 @@
 # Each module is gated by an enable_* flag (default true, so example tfvars
-# still describe the full stack). The committed dev tfvars turns every flag
-# off except the data lake. The dev-data-lake workflow refuses to plan or
-# apply unless that file stays lake-only.
+# still describe the full stack). The committed dev tfvars enables the data
+# lake and the analytics catalog only. The dev workflow refuses to plan or
+# apply unless that file stays on those two modules.
 
 module "networking" {
   count  = var.enable_networking ? 1 : 0
@@ -24,9 +24,9 @@ module "analytics" {
   count  = var.enable_analytics ? 1 : 0
   source = "./modules/analytics"
 
-  name             = local.name
-  lake_bucket_name = var.enable_data_lake ? module.data_lake[0].bucket_name : "lake-disabled"
-  lake_bucket_arn  = var.enable_data_lake ? module.data_lake[0].bucket_arn : "arn:aws:s3:::lake-disabled"
+  name                           = local.name
+  lake_bucket_name               = var.enable_data_lake ? module.data_lake[0].bucket_name : "lake-disabled"
+  bytes_scanned_cutoff_per_query = var.athena_bytes_scanned_cutoff_per_query
 }
 
 module "relational" {

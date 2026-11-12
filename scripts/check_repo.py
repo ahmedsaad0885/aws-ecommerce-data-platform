@@ -3,7 +3,7 @@
 
 Confirms required scaffold paths exist, JSON and NDJSON parse, relative
 markdown links resolve, obvious secret material is absent, and the
-committed dev config stays a lake-only eu-north-1 apply.
+committed dev config stays a lake-plus-analytics eu-north-1 apply.
 """
 
 from __future__ import annotations
@@ -65,7 +65,11 @@ REQUIRED = [
     "services/llm/src/summarize.py",
     ".github/workflows/dev-data-lake.yml",
     "scripts/dev_state_bucket.sh",
-    "scripts/check_lake_plan.py",
+    "scripts/check_dev_plan.py",
+    "scripts/check_catalog_contract.py",
+    "docs/analytics.md",
+    "infra/modules/analytics/tables.json",
+    "infra/modules/analytics/queries.json",
 ]
 
 SKIP_DIRS = {".git", ".terraform", ".venv", "venv", "__pycache__", ".build"}
@@ -155,7 +159,8 @@ DEV_TFVARS = {
     "name_prefix": "ecom-737334244495",
     "enable_networking": "false",
     "enable_data_lake": "true",
-    "enable_analytics": "false",
+    "enable_analytics": "true",
+    "athena_bytes_scanned_cutoff_per_query": "10485760",
     "enable_relational": "false",
     "enable_nosql": "false",
     "enable_streaming": "false",
@@ -240,7 +245,11 @@ def check_dev_workflow() -> list[str]:
     for required in (
         "workflow_dispatch:",
         "pull_request:",
-        "apply-dev-lake",
+        "apply-dev-analytics",
+        "check_dev_plan.py",
+        "--require-lake-noop",
+        "--require-analytics",
+        "ecom-737334244495-dev-lake",
         "force-skip-oidc",
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
@@ -250,6 +259,10 @@ def check_dev_workflow() -> list[str]:
             errors.append(f"dev-data-lake workflow is missing {required}")
     if text.count("terraform -chdir=infra apply") != 1:
         errors.append("dev-data-lake workflow must contain exactly one terraform apply")
+    if "confirm == 'apply-dev-lake'" in text or 'confirm == "apply-dev-lake"' in text:
+        errors.append("dev-data-lake workflow must not apply on the retired confirm string apply-dev-lake")
+    if "check_lake_plan.py" in text:
+        errors.append("dev-data-lake workflow still calls check_lake_plan.py")
     return errors
 
 
@@ -265,6 +278,16 @@ def self_test_guards() -> list[str]:
         relational = good_tf.replace("enable_relational    = false", "enable_relational    = true", 1)
         if relational == good_tf or not any("enable_relational" in item for item in scope_errors(relational, good_be)):
             errors.append("scope self-test did not reject enable_relational=true")
+        analytics_off = good_tf.replace("enable_analytics     = true", "enable_analytics     = false", 1)
+        if analytics_off == good_tf or not any(
+            "enable_analytics" in item for item in scope_errors(analytics_off, good_be)
+        ):
+            errors.append("scope self-test did not reject enable_analytics=false")
+        cutoff = good_tf.replace("10485760", "999", 1)
+        if cutoff == good_tf or not any(
+            "athena_bytes_scanned_cutoff_per_query" in item for item in scope_errors(cutoff, good_be)
+        ):
+            errors.append("scope self-test did not reject a bytes scanned cutoff below the provider minimum")
         east = good_tf.replace("eu-north-1", "us-east-1")
         if not scope_errors(east, good_be):
             errors.append("scope self-test did not reject us-east-1")
@@ -297,13 +320,26 @@ def self_test_guards() -> list[str]:
             errors.append("state bucket parse accepted a non-dev backend file")
 
     plan_check = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/check_lake_plan.py"), "--self-test"],
+        [sys.executable, str(ROOT / "scripts/check_dev_plan.py"), "--self-test"],
         capture_output=True,
         text=True,
         check=False,
     )
     if plan_check.returncode != 0:
-        errors.append(plan_check.stdout.strip() or plan_check.stderr.strip() or "lake plan self-test failed")
+        errors.append(plan_check.stdout.strip() or plan_check.stderr.strip() or "dev plan self-test failed")
+
+    catalog_check = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/check_catalog_contract.py"), "--self-test"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if catalog_check.returncode != 0:
+        errors.append(
+            catalog_check.stdout.strip()
+            or catalog_check.stderr.strip()
+            or "catalog contract self-test failed"
+        )
     return errors
 
 
@@ -341,7 +377,7 @@ def main() -> int:
         for error in errors:
             print(f"  {error}")
         return 1
-    print("Repository check ok (paths, JSON, links, secrets, dev lake scope).")
+    print("Repository check ok (paths, JSON, links, secrets, dev lake and analytics scope).")
     return 0
 
 

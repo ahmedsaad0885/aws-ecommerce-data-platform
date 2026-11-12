@@ -1,0 +1,7 @@
+{
+  "raw_order_events_preview": "Read up to 20 raw order events. Returns no rows until newline-delimited JSON objects sit directly under raw/order-events/.",
+  "raw_product_catalog_preview": "Read up to 20 catalog items from the lake file drop. Returns no rows until newline-delimited JSON objects sit under raw/product-catalog/. This is not the DynamoDB table.",
+  "raw_reviews_preview": "Read up to 20 raw reviews. Returns no rows until newline-delimited JSON objects sit under raw/reviews/.",
+  "gold_orders_sample_date": "Gold orders for the sample placement date 2026-01-15. Returns no rows until a file exists at gold/orders/order_date=2026-01-15/. total_amount is cast to DECIMAL(12, 2).",
+  "gold_reviews_sample_date": "Gold reviews for the sample UTC date 2026-01-16. Returns no rows until a file exists at gold/reviews/created_date=2026-01-16/. No job writes this prefix yet."
+}

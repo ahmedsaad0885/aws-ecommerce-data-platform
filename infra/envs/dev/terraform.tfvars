@@ -1,19 +1,23 @@
-# Dev lake-only apply. Account 737334244495, region eu-north-1.
+# Dev lake plus Glue catalog and Athena. Account 737334244495, region eu-north-1.
 # Lake bucket: ecom-737334244495-dev-lake
-# CI rejects this file unless enable_data_lake is the only flag set to true.
+# CI rejects this file unless enable_data_lake and enable_analytics are the
+# only flags set to true. Analytics does not create an IAM role.
 aws_region  = "eu-north-1"
 environment = "dev"
 name_prefix = "ecom-737334244495"
 
 enable_networking    = false
 enable_data_lake     = true
-enable_analytics     = false
+enable_analytics     = true
 enable_relational    = false
 enable_nosql         = false
 enable_streaming     = false
 enable_api           = false
 enable_llm           = false
 enable_observability = false
+
+# Smallest per-query scan cap the Terraform AWS provider accepts (10 MiB).
+athena_bytes_scanned_cutoff_per_query = 10485760
 
 # Still required by the root variables. Unused while those modules are off.
 # AZs are eu-north-1 so a later opt-in cannot leave the region.

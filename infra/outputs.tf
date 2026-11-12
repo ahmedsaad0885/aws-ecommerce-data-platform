@@ -4,7 +4,7 @@ output "lake_bucket_name" {
 }
 
 output "glue_database_name" {
-  description = "Glue catalog database for lake tables."
+  description = "Glue Data Catalog database for lake tables."
   value       = var.enable_analytics ? module.analytics[0].database_name : null
 }
 
@@ -13,9 +13,24 @@ output "athena_workgroup_name" {
   value       = var.enable_analytics ? module.analytics[0].workgroup_name : null
 }
 
-output "glue_role_arn" {
-  description = "Role for a future Glue job. No job is defined yet."
-  value       = var.enable_analytics ? module.analytics[0].role_arn : null
+output "glue_table_names" {
+  description = "Glue tables registered from the repository contracts."
+  value       = var.enable_analytics ? module.analytics[0].table_names : null
+}
+
+output "athena_named_query_names" {
+  description = "Saved Athena queries. They are not executed by Terraform."
+  value       = var.enable_analytics ? module.analytics[0].named_query_names : null
+}
+
+output "athena_bytes_scanned_cutoff_per_query" {
+  description = "Per-query bytes scanned cutoff on the Athena workgroup."
+  value       = var.enable_analytics ? module.analytics[0].bytes_scanned_cutoff_per_query : null
+}
+
+output "athena_results_location" {
+  description = "S3 prefix where this workgroup writes query results."
+  value       = var.enable_analytics ? module.analytics[0].results_location : null
 }
 
 output "db_instance_identifier" {
