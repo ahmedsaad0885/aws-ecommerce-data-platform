@@ -21,19 +21,30 @@ variable "enable_networking" {
 }
 
 variable "enable_data_lake" {
-  description = "Create the S3 lake bucket. Defaults on. This is the only module the committed dev tfvars enables."
+  description = "Create the S3 lake bucket. Defaults on. The committed dev tfvars enables this and the analytics catalog."
   type        = bool
   default     = true
 }
 
 variable "enable_analytics" {
-  description = "Create Glue, Athena, and the Glue IAM role. Defaults on so example tfvars stay a full-stack plan. Off for the first dev apply: that role is not required for the bucket, and IAM role creation can fail on this account."
+  description = "Create the Glue Data Catalog database, external tables, and the Athena workgroup. Defaults on so example tfvars stay a full-stack plan. Does not create an IAM role, a crawler, or a Glue job. The committed dev tfvars enables this with the data lake."
   type        = bool
   default     = true
 
   validation {
     condition     = !var.enable_analytics || var.enable_data_lake
     error_message = "enable_analytics requires enable_data_lake."
+  }
+}
+
+variable "athena_bytes_scanned_cutoff_per_query" {
+  description = "Per-query data scanned limit on the Athena workgroup, in bytes. Athena cancels a query that goes past it. The smallest value the AWS provider accepts is 10485760 (10 MiB). Ignored when analytics is off."
+  type        = number
+  default     = 10485760
+
+  validation {
+    condition     = var.athena_bytes_scanned_cutoff_per_query >= 10485760
+    error_message = "athena_bytes_scanned_cutoff_per_query must be at least 10485760 (10 MiB)."
   }
 }
 

@@ -2,7 +2,7 @@
 
 Data path for retail orders on AWS: land source data, shape it, and serve it. The domain is customers, products, orders, and reviews. A BI owner can sit on the analytical tables later. This repository is the platform those tables come from.
 
-This repository holds the architecture, the contracts, a Terraform skeleton, and a local gold transform for order events. Pull requests and merges do not deploy the platform. A manual workflow can create the dev S3 lake in `eu-north-1`. See [infra/README.md](infra/README.md).
+This repository holds the architecture, the contracts, a Terraform skeleton, and a local gold transform for order events. Pull requests and merges do not deploy the platform. The dev S3 lake in `eu-north-1` is already created. A manual workflow can register the Glue Data Catalog and the Athena workgroup on that lake. See [infra/README.md](infra/README.md) and [docs/analytics.md](docs/analytics.md).
 
 ## Vision
 
@@ -27,7 +27,7 @@ Flow, in one pass:
 
 1. Orders, catalog files, and reviews land in an S3 lake (`raw/`, then `bronze/`, `silver/`, `gold/`).
 2. Order lifecycle events also go to EventBridge, then Kinesis, then Firehose back into `raw/order-events/`.
-3. Glue holds the catalog. Athena queries gold. That is the analytical path for a future BI owner.
+3. Glue holds the catalog. Athena queries gold. That is the analytical path for a future BI owner. The dev catalog and workgroup are described in [docs/analytics.md](docs/analytics.md). They are empty until files are landed, and they are not created until the manual apply.
 4. Gold loads an RDS PostgreSQL database, which is the serving copy for orders, customers, and reviews.
 5. A DynamoDB table serves product lookups by id and by category.
 6. API Gateway and Lambda expose `GET /health`. Order and product routes wait for authentication.
@@ -46,7 +46,7 @@ Environments are `dev`, `staging`, and `prod`. They share one Terraform root. Ea
 | v3 Streaming | A consumer on the order stream updates silver and a low-latency order status without waiting for the batch. |
 | v4 LLM | Bedrock writes a short summary onto reviews, bounded by the prompt contract in `services/llm`. |
 
-v1 is the local gold transform. The next lakehouse step is to point that same job at `raw/order-events/` and write `gold/orders/` after a dev lake is applied. v2 remains the read API and the load into PostgreSQL.
+v1 is the local gold transform. The dev lake bucket exists. The next lakehouse step is the Glue catalog and Athena workgroup on that bucket, then pointing the same job at `raw/order-events/` and writing `gold/orders/order_date=.../`. v2 remains the read API and the load into PostgreSQL.
 
 ## Repository layout
 
@@ -58,7 +58,7 @@ services/llm/          Review-summary contract, no model call
 data/schemas/          JSON Schema, Avro, and SQL contracts
 data/samples/          Synthetic records
 docs/                  Architecture and data model
-.github/workflows/     Validate and pipeline tests; dev-lake plan; manual dev-lake apply
+.github/workflows/     Validate and pipeline tests; dev plan; manual dev catalog apply
 ```
 
 ## Run checks locally

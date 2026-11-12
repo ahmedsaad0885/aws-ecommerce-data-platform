@@ -6,7 +6,7 @@ Local batch transforms. The transform uses the Python standard library. Tests ne
 
 `python -m pipelines.orders` reads order lifecycle events and writes one gold row per `order_id`. The columns follow [data/schemas/sql/gold.sql](../data/schemas/sql/gold.sql) for `gold_orders`, including the `order_date` partition value on the row.
 
-The file is NDJSON. `total_amount` stays a two-place decimal string so the cents match `DECIMAL(12, 2)` exactly. Athena would load that value as a decimal. A later lake write can switch the bytes to Parquet and put `order_date` in the directory path.
+The file is NDJSON. `total_amount` stays a two-place decimal string so the cents match `DECIMAL(12, 2)` exactly. The Glue table keeps that string. The saved Athena query casts it with `CAST(total_amount AS DECIMAL(12, 2))`. A later lake write can switch the bytes to Parquet and keep `order_date` as the directory name.
 
 ### Rules
 
@@ -56,10 +56,10 @@ python3 -m pipelines.orders check \
 
 Silver line output (the `prd_2001` quantity and unit price as their own rows) is a later write. This job proves the gold order grain. Field meanings: [docs/data-model.md](../docs/data-model.md).
 
+### Next
+
+The dev lake bucket exists. The catalog table for this output is `gold_orders`, partitioned by `order_date`, with files at `gold/orders/order_date=YYYY-MM-DD/`. Point this same transform at objects under `raw/order-events/` when you are ready to write that prefix. Glue can run the module later. The IAM role for that job is not in the analytics module. Role creation waits until the account can create roles. Queries until then run as the IAM user who starts them. This milestone still stops at the local file. The console steps are in [docs/analytics.md](../docs/analytics.md).
+
 ## Synthetic datasets
 
 `python -m pipelines.datasets` writes the e-commerce world and the airport traffic history. The modules are standard library only. `make dataset` writes the beefy scale under `data/generated/`. pytest uses the `test` scale and checks the committed `sample` snapshots. The gold transform is unchanged: a generated order file is valid input, and the tiny sample above is still the fixture `make pipeline` checks. Commands and scales: [docs/datasets.md](../docs/datasets.md). Airport rules: [docs/airport-data-model.md](../docs/airport-data-model.md).
-
-### Next
-
-After a dev lake is applied, point this same transform at objects under `raw/order-events/` and write `gold/orders/` partitioned by `order_date`. Glue can run the module later. The IAM role for a job is already on the analytical module. This milestone stops at the local file.

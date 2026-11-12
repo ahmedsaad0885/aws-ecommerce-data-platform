@@ -1,14 +1,16 @@
-# Dev S3 lake only. Access keys from repo secrets. No OIDC and no role assumption.
-# pull_request plans and never applies. Apply is workflow_dispatch on main
-# after typing apply-dev-lake. Merging this workflow does not create resources.
-name: Dev data lake
+# Dev S3 lake plus Glue Data Catalog and Athena. Access keys from repo secrets.
+# No OIDC and no role assumption. pull_request plans and never applies.
+# Apply is workflow_dispatch on main after typing apply-dev-analytics.
+# Merging this workflow does not create resources. The retired confirm
+# string apply-dev-lake does not apply.
+name: Dev lake and analytics
 
 on:
   pull_request:
   workflow_dispatch:
     inputs:
       confirm:
-        description: "Type apply-dev-lake to bootstrap state and apply the dev S3 lake. Any other value plans only."
+        description: "Type apply-dev-analytics to apply the dev Glue catalog and Athena workgroup onto the existing lake. Any other value plans only."
         required: true
         default: plan
         type: string
@@ -22,8 +24,8 @@ concurrency:
 
 jobs:
   plan:
-    name: plan dev lake
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm != 'apply-dev-lake')
+    name: plan dev lake and analytics
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm != 'apply-dev-analytics')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -49,7 +51,7 @@ jobs:
           terraform -chdir=infra init -backend=false -input=false
           terraform -chdir=infra validate
 
-      - name: Repo checks, including lake-only dev tfvars
+      - name: Repo checks, including dev lake and analytics scope
         run: python3 scripts/check_repo.py
 
       - name: Require AWS access key secrets
@@ -86,7 +88,7 @@ jobs:
           echo "Unexpected state bucket status: '${{ steps.state.outputs.mode }}'"
           exit 1
 
-      - name: Plan the dev lake
+      - name: Plan the dev lake and analytics catalog
         if: steps.state.outputs.mode == 'exists'
         run: |
           set -euo pipefail
@@ -94,7 +96,7 @@ jobs:
           terraform -chdir=infra plan -input=false -lock-timeout=120s -var-file=envs/dev/terraform.tfvars -out=dev-lake.tfplan
           terraform -chdir=infra show -no-color dev-lake.tfplan | tee dev-lake-plan.txt
           terraform -chdir=infra show -json dev-lake.tfplan > dev-lake-plan.json
-          python3 scripts/check_lake_plan.py dev-lake-plan.json --expect-bucket ecom-737334244495-dev-lake
+          python3 scripts/check_dev_plan.py dev-lake-plan.json --expect-bucket ecom-737334244495-dev-lake --require-lake-noop --require-analytics
 
       - name: Explain a missing state bucket
         if: steps.state.outputs.mode == 'missing'
@@ -102,9 +104,9 @@ jobs:
           cat > dev-lake-plan.txt <<'EOF'
           Remote plan skipped: state bucket ecom-737334244495-dev-tfstate does not exist yet.
           fmt and validate already ran with -backend=false.
-          After merge, run this workflow from the main branch and type apply-dev-lake.
-          That run creates the state bucket in eu-north-1, then applies only the dev lake
-          (ecom-737334244495-dev-lake). It does not apply on this pull request.
+          After merge, run this workflow from the main branch and type apply-dev-analytics.
+          That run uses the existing state key, then applies the dev lake plus the Glue
+          catalog and Athena workgroup. It does not apply on this pull request.
           EOF
           cat dev-lake-plan.txt
 
@@ -119,9 +121,9 @@ jobs:
               text = text.slice(0, 60000) + '\n\n...[truncated]';
             }
             const body = [
-              '## Dev data lake plan (eu-north-1)',
+              '## Dev lake and analytics plan (eu-north-1)',
               '',
-              'This job does not apply. Apply is a manual run of this workflow on `main` with confirm `apply-dev-lake`.',
+              'This job does not apply. Apply is a manual run of this workflow on `main` with confirm `apply-dev-analytics`.',
               '',
               '```',
               text.trim(),
@@ -143,18 +145,18 @@ jobs:
 
   reject-off-main:
     name: refuse apply off main
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'apply-dev-lake' && github.ref != 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'apply-dev-analytics' && github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Refuse
         run: |
           echo "Refusing to apply from ${{ github.ref }}."
-          echo "Run Dev data lake from the main branch after this pull request merges, and type apply-dev-lake."
+          echo "Run Dev lake and analytics from the main branch after this pull request merges, and type apply-dev-analytics."
           exit 1
 
   apply:
-    name: apply dev lake
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'apply-dev-lake' && github.ref == 'refs/heads/main'
+    name: apply dev lake and analytics
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'apply-dev-analytics' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -178,7 +180,7 @@ jobs:
           terraform -chdir=infra init -backend=false -input=false
           terraform -chdir=infra validate
 
-      - name: Repo checks, including lake-only dev tfvars
+      - name: Repo checks, including dev lake and analytics scope
         run: python3 scripts/check_repo.py
 
       - name: Require AWS access key secrets
@@ -205,12 +207,12 @@ jobs:
       - name: Bootstrap the state bucket
         run: bash scripts/dev_state_bucket.sh ensure
 
-      - name: Plan and apply the dev lake only
+      - name: Plan and apply the dev lake and analytics catalog
         run: |
           set -euo pipefail
           terraform -chdir=infra init -input=false -reconfigure -backend-config=envs/dev/backend.hcl
           terraform -chdir=infra plan -input=false -lock-timeout=120s -var-file=envs/dev/terraform.tfvars -out=dev-lake.tfplan
           terraform -chdir=infra show -no-color dev-lake.tfplan | tee dev-lake-plan.txt
           terraform -chdir=infra show -json dev-lake.tfplan > dev-lake-plan.json
-          python3 scripts/check_lake_plan.py dev-lake-plan.json --expect-bucket ecom-737334244495-dev-lake
+          python3 scripts/check_dev_plan.py dev-lake-plan.json --expect-bucket ecom-737334244495-dev-lake --require-lake-noop --require-analytics
           terraform -chdir=infra apply -input=false -lock-timeout=120s dev-lake.tfplan

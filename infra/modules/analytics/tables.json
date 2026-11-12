@@ -1,0 +1,258 @@
+{
+  "raw_order_events": {
+    "description": "Order lifecycle events as newline-delimited JSON under raw/order-events/. One JSON object per line. Not partitioned: a future Firehose layout uses year/month/day prefixes, and those prefixes are not registered yet.",
+    "prefix": "raw/order-events/",
+    "projection": null,
+    "partition_keys": [],
+    "columns": [
+      {
+        "name": "schema_version",
+        "type": "int",
+        "comment": "Contract version. The JSON Schema requires 1."
+      },
+      {
+        "name": "event_id",
+        "type": "string",
+        "comment": "Unique id of this lifecycle event."
+      },
+      {
+        "name": "event_type",
+        "type": "string",
+        "comment": "OrderPlaced, OrderPaid, OrderShipped, or OrderCancelled."
+      },
+      {
+        "name": "occurred_at",
+        "type": "string",
+        "comment": "When the event happened, ISO-8601 UTC text, matching the JSON Schema. Not a timestamp column."
+      },
+      {
+        "name": "order_id",
+        "type": "string",
+        "comment": "Order id, shared by every event for that order."
+      },
+      {
+        "name": "customer_id",
+        "type": "string",
+        "comment": "Customer id on this event."
+      },
+      {
+        "name": "currency",
+        "type": "string",
+        "comment": "Three-letter currency code."
+      },
+      {
+        "name": "total_amount",
+        "type": "string",
+        "comment": "Money as a decimal string with two fraction digits, for example 24.00. Not a JSON number and not a float."
+      },
+      {
+        "name": "items",
+        "type": "array<struct<product_id:string,quantity:int,unit_price:string>>",
+        "comment": "Lines on this event. quantity is units on the line. unit_price is a decimal string. item_count on gold is the length of this array, not the sum of quantity."
+      }
+    ]
+  },
+  "raw_product_catalog": {
+    "description": "Product catalog file drop as newline-delimited JSON under raw/product-catalog/. This is the lake file, not the DynamoDB table. Not partitioned.",
+    "prefix": "raw/product-catalog/",
+    "projection": null,
+    "partition_keys": [],
+    "columns": [
+      {
+        "name": "schema_version",
+        "type": "int",
+        "comment": "Contract version. The JSON Schema requires 1."
+      },
+      {
+        "name": "product_id",
+        "type": "string",
+        "comment": "Product id. Same id the DynamoDB catalog uses when that table exists."
+      },
+      {
+        "name": "sku",
+        "type": "string",
+        "comment": "Stock keeping unit."
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "comment": "Display name."
+      },
+      {
+        "name": "category",
+        "type": "string",
+        "comment": "Category. The DynamoDB GSI uses the same attribute."
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "comment": "active or discontinued."
+      },
+      {
+        "name": "price",
+        "type": "string",
+        "comment": "Money as a decimal string with two fraction digits. Not a JSON number."
+      },
+      {
+        "name": "updated_at",
+        "type": "string",
+        "comment": "When this catalog item was updated, ISO-8601 UTC text."
+      }
+    ]
+  },
+  "raw_reviews": {
+    "description": "Review file drop as newline-delimited JSON under raw/reviews/. summary is not part of this file. Not partitioned.",
+    "prefix": "raw/reviews/",
+    "projection": null,
+    "partition_keys": [],
+    "columns": [
+      {
+        "name": "schema_version",
+        "type": "int",
+        "comment": "Contract version. The JSON Schema requires 1."
+      },
+      {
+        "name": "review_id",
+        "type": "string",
+        "comment": "Review id."
+      },
+      {
+        "name": "product_id",
+        "type": "string",
+        "comment": "Product the review is about."
+      },
+      {
+        "name": "customer_id",
+        "type": "string",
+        "comment": "Customer who wrote the review."
+      },
+      {
+        "name": "rating",
+        "type": "int",
+        "comment": "Whole number from 1 to 5."
+      },
+      {
+        "name": "body",
+        "type": "string",
+        "comment": "Review text."
+      },
+      {
+        "name": "created_at",
+        "type": "string",
+        "comment": "When the review was created, ISO-8601 UTC text."
+      }
+    ]
+  },
+  "gold_orders": {
+    "description": "One row per order, newline-delimited JSON under gold/orders/order_date=YYYY-MM-DD/. item_count is the number of lines on the winning event, not the sum of quantities and not the number of events. status is placed, paid, shipped, or cancelled. Partition order_date is the UTC date of placed_at.",
+    "prefix": "gold/orders/",
+    "projection": {
+      "column": "order_date",
+      "format": "yyyy-MM-dd",
+      "range": "2020-01-01,NOW",
+      "interval": "1",
+      "interval_unit": "DAYS",
+      "template_suffix": "order_date=${order_date}/"
+    },
+    "partition_keys": [
+      {
+        "name": "order_date",
+        "type": "string",
+        "comment": "UTC calendar date of placed_at, yyyy-MM-dd. Read from the directory order_date=YYYY-MM-DD, not from the JSON line."
+      }
+    ],
+    "columns": [
+      {
+        "name": "order_id",
+        "type": "string",
+        "comment": "Order id. One gold row per order."
+      },
+      {
+        "name": "customer_id",
+        "type": "string",
+        "comment": "Customer on the latest event for this order."
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "comment": "placed, paid, shipped, or cancelled. Latest event wins."
+      },
+      {
+        "name": "currency",
+        "type": "string",
+        "comment": "Three-letter currency code from the latest event."
+      },
+      {
+        "name": "total_amount",
+        "type": "string",
+        "comment": "Decimal string with two fraction digits. Logical type is DECIMAL(12, 2); cast in the query. The file does not use a JSON number."
+      },
+      {
+        "name": "placed_at",
+        "type": "timestamp",
+        "comment": "Earliest OrderPlaced time, UTC. Later events do not move it. Parsed from ISO-8601 text by timestamp.formats."
+      },
+      {
+        "name": "item_count",
+        "type": "int",
+        "comment": "Number of lines on the winning event. A line with quantity 2 still counts as 1. Two events for one order do not add their line counts."
+      }
+    ]
+  },
+  "gold_reviews": {
+    "description": "Review mart as newline-delimited JSON under gold/reviews/created_date=YYYY-MM-DD/. created_date is the UTC date of created_at. summary stays empty until a later write. No review transform is registered in this apply.",
+    "prefix": "gold/reviews/",
+    "projection": {
+      "column": "created_date",
+      "format": "yyyy-MM-dd",
+      "range": "2020-01-01,NOW",
+      "interval": "1",
+      "interval_unit": "DAYS",
+      "template_suffix": "created_date=${created_date}/"
+    },
+    "partition_keys": [
+      {
+        "name": "created_date",
+        "type": "string",
+        "comment": "UTC calendar date of created_at, yyyy-MM-dd. Directory name created_date=YYYY-MM-DD."
+      }
+    ],
+    "columns": [
+      {
+        "name": "review_id",
+        "type": "string",
+        "comment": "Review id."
+      },
+      {
+        "name": "product_id",
+        "type": "string",
+        "comment": "Product the review is about."
+      },
+      {
+        "name": "customer_id",
+        "type": "string",
+        "comment": "Customer who wrote the review."
+      },
+      {
+        "name": "rating",
+        "type": "int",
+        "comment": "Whole number from 1 to 5."
+      },
+      {
+        "name": "body",
+        "type": "string",
+        "comment": "Review text."
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp",
+        "comment": "When the review was created, UTC. Parsed from ISO-8601 text by timestamp.formats."
+      },
+      {
+        "name": "summary",
+        "type": "string",
+        "comment": "Short model summary. Not in the raw review file. Null until a later write."
+      }
+    ]
+  }
+}
