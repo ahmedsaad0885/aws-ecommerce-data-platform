@@ -33,6 +33,21 @@ output "athena_results_location" {
   value       = var.enable_analytics ? module.analytics[0].results_location : null
 }
 
+output "gold_orders_job_name" {
+  description = "Glue job that writes Parquet gold orders. Null when glue jobs are off."
+  value       = var.enable_glue_jobs ? module.glue_jobs[0].job_name : null
+}
+
+output "gold_orders_job_role_arn" {
+  description = "IAM role the gold-orders Glue job assumes. This is the only role in the dev stack."
+  value       = var.enable_glue_jobs ? module.glue_jobs[0].role_arn : null
+}
+
+output "gold_orders_script_location" {
+  description = "S3 URI of the gold-orders Glue entry script."
+  value       = var.enable_glue_jobs ? module.glue_jobs[0].script_location : null
+}
+
 output "db_instance_identifier" {
   description = "PostgreSQL instance identifier."
   value       = var.enable_relational ? module.relational[0].instance_identifier : null

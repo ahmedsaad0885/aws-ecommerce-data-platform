@@ -1,10 +1,9 @@
 # Glue Data Catalog database, external tables, and an Athena workgroup.
 # Tables are registered from infra/modules/analytics/tables.json, which is
 # checked against data/schemas and data/schemas/sql/gold.sql.
-# No crawler, no Glue job, no Glue trigger, and no Lake Formation admin setup.
-# A future Glue job role waits until this account can create IAM roles.
-# This module does not declare an IAM role, user, policy, or identity provider.
-# Queries run as the IAM user who starts them.
+# No crawler and no trigger. This module does not declare an IAM role.
+# The gold-orders job and its role live in the glue-jobs module.
+# Queries still run as the IAM user who starts them.
 
 variable "name" {
   description = "Name prefix including environment. Hyphens become underscores in the Glue database name."
@@ -44,13 +43,22 @@ locals {
   json_input_format      = "org.apache.hadoop.mapred.TextInputFormat"
   json_output_format     = "org.apache.hadoop.hive.ql.io.IgnoreKeyTextOutputFormat"
   json_timestamp_formats = "yyyy-MM-dd'T'HH:mm:ss'Z',yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+  parquet_serde          = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+  parquet_input_format   = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+  parquet_output_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+
+  table_format = {
+    for name, table in local.catalog_tables :
+    name => try(table.format, "json")
+  }
 
   table_parameters = {
     for name, table in local.catalog_tables : name => merge(
       {
-        classification = "json"
+        classification = local.table_format[name] == "parquet" ? "parquet" : "json"
         EXTERNAL       = "TRUE"
       },
+      local.table_format[name] == "parquet" ? { "parquet.compression" = "SNAPPY" } : {},
       table.projection == null ? {} : {
         "projection.enabled"                                  = "true"
         "projection.${table.projection.column}.type"          = "date"
@@ -65,7 +73,7 @@ locals {
 
   serde_parameters = {
     for name, table in local.catalog_tables : name => (
-      contains(table.columns[*].type, "timestamp") ? {
+      local.table_format[name] == "json" && contains(table.columns[*].type, "timestamp") ? {
         "timestamp.formats" = local.json_timestamp_formats
       } : {}
     )
@@ -86,13 +94,20 @@ resource "aws_glue_catalog_table" "this" {
   table_type    = "EXTERNAL_TABLE"
   parameters    = local.table_parameters[each.key]
 
+  lifecycle {
+    precondition {
+      condition     = contains(["json", "parquet"], local.table_format[each.key])
+      error_message = "Table ${each.key} format must be json or parquet."
+    }
+  }
+
   storage_descriptor {
     location      = "s3://${var.lake_bucket_name}/${each.value.prefix}"
-    input_format  = local.json_input_format
-    output_format = local.json_output_format
+    input_format  = local.table_format[each.key] == "parquet" ? local.parquet_input_format : local.json_input_format
+    output_format = local.table_format[each.key] == "parquet" ? local.parquet_output_format : local.json_output_format
 
     ser_de_info {
-      serialization_library = local.json_serde
+      serialization_library = local.table_format[each.key] == "parquet" ? local.parquet_serde : local.json_serde
       parameters            = local.serde_parameters[each.key]
     }
 

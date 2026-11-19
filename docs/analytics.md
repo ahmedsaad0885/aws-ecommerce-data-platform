@@ -20,7 +20,7 @@ A **column** is one field. A **data type** says what kind of value the field hol
 
 **NDJSON** means newline-delimited JSON. Each line is one JSON object. The next line is the next row. Pretty-printed JSON, with a line break inside one object, is a different layout and these tables will not read it.
 
-A **SerDe** (serializer/deserializer) is the library that turns file bytes into columns and columns back into bytes. These tables use the **Hive JSON SerDe**, class `org.apache.hive.hcatalog.data.JsonSerDe`. Athena documents two JSON libraries. The [OpenX JSON SerDe](https://docs.aws.amazon.com/athena/latest/ug/openx-json-serde.html) page says its results can be non-deterministic and names the Hive library as the workaround. The [Hive JSON SerDe](https://docs.aws.amazon.com/athena/latest/ug/hive-json-serde.html) page says each JSON object must be one line. That is the library registered here.
+A **SerDe** (serializer/deserializer) is the library that turns file bytes into columns and columns back into bytes. The JSON tables use the **Hive JSON SerDe**, class `org.apache.hive.hcatalog.data.JsonSerDe`. Athena documents two JSON libraries. The [OpenX JSON SerDe](https://docs.aws.amazon.com/athena/latest/ug/openx-json-serde.html) page says its results can be non-deterministic and names the Hive library as the workaround. The [Hive JSON SerDe](https://docs.aws.amazon.com/athena/latest/ug/hive-json-serde.html) page says each JSON object must be one line. That is the library registered for the raw tables and for `gold_reviews`. `gold_orders` uses the Parquet SerDe instead. See [gold-orders-job.md](gold-orders-job.md).
 
 **Amazon Athena** is serverless SQL over files in S3. Serverless means there is no cluster to start, size, or stop. You send a SQL statement. Athena reads the catalog, reads the objects the statement needs, and writes the result to S3. You pay for the amount of data scanned, not for an idle server. The engine for this workgroup is **Athena engine version 3**, which runs Trino SQL. DDL (the statements that create and alter tables) is the Hive-style catalog language. Day-to-day questions are `SELECT`.
 
@@ -36,7 +36,7 @@ A **partition** is a slice of a table stored under its own prefix, usually `colu
 
 **Partition projection** is Athena calculating those slice names from table properties instead of looking up each slice in the catalog. No crawler, and no `MSCK REPAIR TABLE`, is required. `MSCK REPAIR TABLE` is the statement that walks S3 and adds Hive-style partitions to the catalog. We do not use it. Projection covers dates from `2020-01-01` through the current day.
 
-**IAM** is AWS's permission system. An **IAM user** is a person or a tool with long-lived access keys. An **IAM role** is an identity that a service or a user assumes for a session. This apply does not create a user, a role, a policy, or an identity provider. Queries run as the IAM user who starts them (`grok_bot_admin`). A future Glue job would need a role. That role waits until the account can create roles.
+**IAM** is AWS's permission system. An **IAM user** is a person or a tool with long-lived access keys. An **IAM role** is an identity that a service or a user assumes for a session. Queries still run as the IAM user who starts them (`grok_bot_admin`). The analytics module does not create a role. The one role in the dev stack belongs to the gold-orders Glue job, and it is documented in [gold-orders-job.md](gold-orders-job.md).
 
 ## Names
 
@@ -62,7 +62,7 @@ These are the only new resources:
 | `aws_glue_catalog_table` `raw_order_events` | NDJSON order events at `raw/order-events/`. Not partitioned. |
 | `aws_glue_catalog_table` `raw_product_catalog` | NDJSON catalog file at `raw/product-catalog/`. Not partitioned. This is not DynamoDB. |
 | `aws_glue_catalog_table` `raw_reviews` | NDJSON reviews at `raw/reviews/`. Not partitioned. |
-| `aws_glue_catalog_table` `gold_orders` | NDJSON gold orders under `gold/orders/`, partitioned by `order_date`. |
+| `aws_glue_catalog_table` `gold_orders` | Snappy Parquet gold orders under `gold/orders/`, partitioned by `order_date`. |
 | `aws_glue_catalog_table` `gold_reviews` | NDJSON gold reviews under `gold/reviews/`, partitioned by `created_date`. |
 | `aws_athena_workgroup` | Engine v3, enforced settings, SSE-S3 results, 10 MiB scan cap. |
 | `aws_athena_named_query` | Five saved `SELECT` statements. They are not executed. |
@@ -73,8 +73,8 @@ The existing lake bucket, its encryption, its lifecycle rules, and the empty pre
 
 ## What the apply does not create
 
-- No IAM role, IAM user, IAM policy, instance profile, or OIDC provider.
-- No Glue crawler, Glue job, or Glue trigger.
+- No IAM user, instance profile, or OIDC provider. The analytics module creates no role. The gold-orders job module creates one role. See [gold-orders-job.md](gold-orders-job.md).
+- No Glue crawler and no Glue trigger. The one Glue job is the gold-orders job, in its own module.
 - No Lake Formation permissions or Lake Formation admin.
 - No VPC, NAT gateway, RDS database, DynamoDB table, Kinesis stream, Firehose delivery stream, Lambda function, API Gateway, Bedrock role, or CloudWatch alarm.
 - No rows copied by Terraform. Sample files stay in git. A separate manual workflow can land gzipped NDJSON under the three raw prefixes. See [landing-data.md](landing-data.md). That workflow is not this apply, and it does not write `gold/`.
@@ -133,17 +133,17 @@ One row per `order_id`. The latest event, ordered by `occurred_at` and then `eve
 
 `item_count` is the rule that is easy to get wrong. The sample order `ord_1001` has one line, `prd_2001`, with quantity 2. Two events (`OrderPlaced`, then `OrderPaid`) collapse to one gold row. `item_count` is 1.
 
-`placed_at` is a real timestamp column. The SerDe property `timestamp.formats` is `yyyy-MM-dd'T'HH:mm:ss'Z'` and the same pattern with exactly three fractional digits. The sample value `2026-01-15T14:03:00Z` matches the first pattern. A timestamp with one, two, or six fractional digits does not. Write whole seconds, or exactly milliseconds, when you land a file.
+`placed_at` is a real timestamp column. The Parquet file stores it as a Spark timestamp in UTC, microsecond precision. The sample value `2026-01-15T14:03:00Z` is that instant. The JSON SerDe `timestamp.formats` property is only on `gold_reviews`, which is still JSON.
 
-`total_amount` stays `string` in the catalog even though the logical mart type is `DECIMAL(12, 2)`. The file stores `"24.00"` so the cents cannot become a binary float. [Athena engine version 3](https://docs.aws.amazon.com/athena/latest/ug/engine-versions-reference-0003.html) tightened type checks. Its migration notes say a string-to-decimal coercion that sometimes worked on older engines now fails. The catalog therefore matches the bytes. The saved query does `CAST(total_amount AS DECIMAL(12, 2))`. A later Parquet file can store a real decimal. This registration matches the NDJSON the local transform writes today.
+`total_amount` stays `string` in the catalog even though the logical mart type is `DECIMAL(12, 2)`. The file stores the decimal text so the cents cannot become a binary float. Parquet stores that same string. [Athena engine version 3](https://docs.aws.amazon.com/athena/latest/ug/engine-versions-reference-0003.html) tightened type checks. Its migration notes say a string-to-decimal coercion that sometimes worked on older engines now fails. The catalog therefore matches the bytes. The saved query does `CAST(total_amount AS DECIMAL(12, 2))`.
 
-`order_date` is not read from the JSON line. Athena takes it from the directory name. Land a file at:
+Athena takes `order_date` from the directory name. The job writes:
 
 ```text
-s3://ecom-737334244495-dev-lake/gold/orders/order_date=2026-01-15/part.ndjson
+s3://ecom-737334244495-dev-lake/gold/orders/order_date=2026-01-15/part-....snappy.parquet
 ```
 
-The JSON line may still contain `order_date`. The SerDe ignores a field that is not a data column. The local test file keeps `order_date` on the row because that file has no directory layout. The lake object uses the directory.
+`order_date` is not a column inside the Parquet file. The directory name carries it. The local NDJSON test file keeps `order_date` on the row because that file has no directory layout.
 
 Partition projection generates `order_date` from `2020-01-01` through today. A query should still say `WHERE order_date = '2026-01-15'` (or a small range). Without that filter Athena lists every projected day. The scan cap stops a large read. It does not make the unfiltered listing a good idea. Dates before `2020-01-01` are outside the projection and will not be found until the range in `tables.json` is widened.
 
@@ -204,13 +204,14 @@ Zero rows is the correct result. The prefixes are empty. A query that errors is 
 6. Choose the database `ecom_737334244495_dev`. The underscores are required. The hyphenated form is the workgroup name, not the database name.
 7. Open **Saved queries** and run `gold_orders_sample_date`, or paste the statement from [gold_orders_sample_date.sql](../infra/modules/analytics/queries/gold_orders_sample_date.sql).
 8. A finished query with zero rows means the catalog is visible and the prefix is empty. Download the result only if you want to see the column headers Athena wrote. That small file is under `athena-results/` and expires after 7 days.
-9. To see a row, land the gzipped raw files with the manual workflow in [landing-data.md](landing-data.md), then run the saved query again. Terraform does not upload those files. A query with `LIMIT` still reads the whole JSON object, so the object has to fit under the 10 MiB cap. The gzipped beefy files do.
+9. Raw rows come from the manual landing workflow in [landing-data.md](landing-data.md). Terraform does not upload those files. A raw query with `LIMIT` still reads the whole JSON object, so the object has to fit under the 10 MiB cap. The gzipped beefy files do.
+10. Gold rows come from the Glue job in [gold-orders-job.md](gold-orders-job.md). Uploading a hand-written JSON file into `gold/orders/` will not match the Parquet table. Use the count query on that page.
 
 The editor's database and workgroup are part of the request. A saved query run from the primary workgroup ignores this stack's result location and scan cap.
 
 ## Permissions for the existing IAM user
 
-Queries and Terraform both use the caller. For dev, that caller is the IAM user `grok_bot_admin`, through the access keys already stored as GitHub secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. This stack does not create a role and does not attach a policy. If a plan or a query returns `AccessDenied`, the error names the missing action. Add that action to the existing user if you choose to. Do not create a new role, a new user, or an identity provider to get around it, and do not turn on account features that cannot be turned off.
+Queries still run as the caller. For dev, that caller is the IAM user `grok_bot_admin`, through the access keys already stored as GitHub secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. The only role this stack creates is the gold-orders Glue job role in [gold-orders-job.md](gold-orders-job.md). If apply fails while creating that role, stop and report the error. Do not attach a broader policy to this user, do not create another user, and do not create an identity provider to get around it.
 
 The lists below are a checklist, taken from AWS's own examples. They are not a policy document to paste onto a new identity.
 
@@ -270,6 +271,4 @@ This workgroup does not use provisioned capacity and does not use Athena Spark. 
 
 ## What is left for later
 
-A Glue job that reads `raw/order-events/` and writes `gold/orders/order_date=.../` needs an IAM role. That role is not in this module. The comment in the module says why: role creation waits until the account can create roles.
-
-Firehose arrival-time prefixes are not catalog partitions yet. Parquet is not the storage of these tables yet. The gold SQL file says both are later, and that the columns can stay. Sample NDJSON is not copied into the bucket by Terraform. The manual landing workflow can put gzipped raw NDJSON. It does not write `gold/`, and it does not add the Glue job that would. That job is a later change. The hook is described in [landing-data.md](landing-data.md).
+The gold-orders job, its role, and the Parquet storage of `gold_orders` are in [gold-orders-job.md](gold-orders-job.md). `gold_reviews` is still JSON and still empty. Firehose arrival-time prefixes are not catalog partitions yet. The manual landing workflow can put gzipped raw NDJSON. It does not write `gold/`. That hook is described in [landing-data.md](landing-data.md). Sample NDJSON is not copied into the bucket by Terraform.

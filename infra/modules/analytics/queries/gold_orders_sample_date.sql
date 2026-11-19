@@ -1,7 +1,7 @@
 -- One row per order for the sample placement date.
--- Files belong at gold/orders/order_date=2026-01-15/ and are newline-delimited JSON.
+-- Files belong at gold/orders/order_date=2026-01-15/ and are Snappy Parquet.
 -- order_date is the directory name. The date filter keeps Athena on that one day.
--- Zero rows means the prefix is empty, which is expected before any gold write.
+-- Zero rows means the prefix is empty, which is expected before the Glue job runs.
 -- item_count is the number of lines, not the sum of quantities.
 -- total_amount is stored as text so the cents stay exact. The cast is DECIMAL(12, 2).
 SELECT

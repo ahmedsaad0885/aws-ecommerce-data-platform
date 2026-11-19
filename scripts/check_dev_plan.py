@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Fail a Terraform JSON plan that is not the dev lake plus analytics catalog.
+"""Fail a Terraform JSON plan that is not the dev lake, analytics, and one Glue job.
 
 Allows the existing data-lake module and, under module.analytics, the Glue
 catalog database, external tables, the Athena workgroup, and named queries.
-Refuses IAM identities, crawlers, jobs, and every other module.
+Allows exactly one Glue job under module.glue_jobs: its role, that role's
+inline policy, the job, the script object, and the rules zip. Refuses every
+other IAM identity, every crawler, and every other module.
 """
 
 from __future__ import annotations
@@ -72,6 +74,22 @@ REQUIRED_ANALYTICS_FRAGMENTS = (
     "aws_athena_named_query.",
 )
 SAFE_ACTIONS = {"no-op", "create", "update", "read"}
+GLUE_PREFIX = "module.glue_jobs[0]."
+# Addresses are exact. A second role, a second job, or a differently named
+# object in this module is rejected. The inline role policy is the attachment.
+GLUE_MANAGED = {
+    f"{GLUE_PREFIX}aws_iam_role.job": "aws_iam_role",
+    f"{GLUE_PREFIX}aws_iam_role_policy.job": "aws_iam_role_policy",
+    f"{GLUE_PREFIX}aws_glue_job.gold_orders": "aws_glue_job",
+    f"{GLUE_PREFIX}aws_s3_object.script": "aws_s3_object",
+    f"{GLUE_PREFIX}aws_s3_object.library": "aws_s3_object",
+}
+GLUE_DATA = {
+    f"{GLUE_PREFIX}data.aws_iam_policy_document.trust": "aws_iam_policy_document",
+    f"{GLUE_PREFIX}data.aws_iam_policy_document.job": "aws_iam_policy_document",
+    f"{GLUE_PREFIX}data.aws_caller_identity.current": "aws_caller_identity",
+    f"{GLUE_PREFIX}data.archive_file.library": "archive_file",
+}
 
 
 def violations(
@@ -80,6 +98,7 @@ def violations(
     expect_bucket: str | None = None,
     require_lake_noop: bool = False,
     require_analytics: bool = False,
+    require_glue_job: bool = False,
     raw: str = "",
 ) -> list[str]:
     changes = plan.get("resource_changes")
@@ -104,6 +123,17 @@ def violations(
             actions = []
         if any(action not in SAFE_ACTIONS for action in actions):
             found.append(f"{address} actions {actions}")
+        if address in GLUE_MANAGED:
+            if mode != "managed" or resource_type != GLUE_MANAGED[address]:
+                found.append(f"{address} ({mode} {resource_type})")
+            continue
+        if address in GLUE_DATA:
+            if mode != "data" or resource_type != GLUE_DATA[address]:
+                found.append(f"{address} ({mode} {resource_type})")
+            continue
+        if address.startswith("module.glue_jobs"):
+            found.append(f"{address} is outside the gold-orders Glue job ({mode} {resource_type})")
+            continue
         if resource_type in FORBIDDEN_TYPES or (
             isinstance(resource_type, str) and resource_type.startswith("aws_iam_")
             and not (mode == "data" and resource_type in LAKE_DATA)
@@ -130,6 +160,10 @@ def violations(
         for fragment in REQUIRED_ANALYTICS_FRAGMENTS:
             if not any(fragment in address for address in addresses):
                 found.append(f"plan is missing {fragment}")
+    if require_glue_job:
+        for address in GLUE_MANAGED:
+            if address not in addresses:
+                found.append(f"plan is missing {address}")
     if expect_bucket and expect_bucket not in raw:
         found.append(f"plan does not mention bucket {expect_bucket}")
     return found
@@ -295,6 +329,63 @@ def self_test() -> list[str]:
 
     if not violations(allowed, expect_bucket="missing-bucket", raw=json.dumps(allowed)):
         errors.append("a plan that omits the bucket name was accepted")
+
+    glue_plan = {
+        "resource_changes": list(allowed["resource_changes"]) + [
+            _change(address, "managed", resource_type)
+            for address, resource_type in GLUE_MANAGED.items()
+        ] + [
+            _change(address, "data", resource_type, ["read"])
+            for address, resource_type in GLUE_DATA.items()
+        ]
+    }
+    glue_raw = json.dumps(glue_plan) + bucket
+    glue_flagged = violations(
+        glue_plan,
+        expect_bucket=bucket,
+        require_lake_noop=True,
+        require_analytics=True,
+        require_glue_job=True,
+        raw=glue_raw,
+    )
+    if glue_flagged:
+        errors.append(f"gold-orders Glue plan was rejected: {glue_flagged}")
+    if not any("aws_glue_job.gold_orders" in item for item in violations(allowed, require_glue_job=True, raw=glue_raw)):
+        errors.append("require-glue-job did not notice a missing Glue job")
+
+    glue_extras = [
+        _change(f"{GLUE_PREFIX}aws_iam_role.other", "managed", "aws_iam_role"),
+        _change(f"{GLUE_PREFIX}aws_iam_policy.extra", "managed", "aws_iam_policy"),
+        _change(f"{GLUE_PREFIX}aws_iam_role_policy_attachment.extra", "managed", "aws_iam_role_policy_attachment"),
+        _change(f"{GLUE_PREFIX}aws_iam_user.bot", "managed", "aws_iam_user"),
+        _change(f"{GLUE_PREFIX}aws_glue_crawler.orders", "managed", "aws_glue_crawler"),
+        _change(f"{GLUE_PREFIX}aws_glue_job.other", "managed", "aws_glue_job"),
+        _change(f"{GLUE_PREFIX}aws_glue_trigger.orders", "managed", "aws_glue_trigger"),
+        _change(f"{GLUE_PREFIX}aws_s3_object.extra", "managed", "aws_s3_object"),
+        _change("module.analytics[0].aws_glue_job.gold_orders", "managed", "aws_glue_job"),
+        _change("module.data_lake[0].aws_iam_role.job", "managed", "aws_iam_role"),
+    ]
+    for change in glue_extras:
+        plan = {"resource_changes": list(glue_plan["resource_changes"]) + [change]}
+        if not violations(plan, require_glue_job=True, raw=bucket):
+            errors.append(f"self-test allowed extra glue resource {change['address']}")
+
+    replaced_role = {
+        "resource_changes": [
+            _change(f"{GLUE_PREFIX}aws_iam_role.job", "managed", "aws_iam_role", ["delete", "create"])
+        ]
+    }
+    if not violations(replaced_role, raw=bucket):
+        errors.append("a Glue role delete/create was allowed")
+
+    noop_glue = {
+        "resource_changes": [
+            _change(address, "managed", resource_type, ["no-op"])
+            for address, resource_type in GLUE_MANAGED.items()
+        ]
+    }
+    if violations(noop_glue, require_glue_job=True, raw=bucket):
+        errors.append("an unchanged gold-orders Glue job was rejected")
     return errors
 
 
@@ -312,6 +403,7 @@ def main(argv: list[str]) -> int:
     expect = None
     require_lake_noop = False
     require_analytics = False
+    require_glue_job = False
     args: list[str] = []
     i = 0
     while i < len(argv):
@@ -325,13 +417,15 @@ def main(argv: list[str]) -> int:
             require_lake_noop = True
         elif argv[i] == "--require-analytics":
             require_analytics = True
+        elif argv[i] == "--require-glue-job":
+            require_glue_job = True
         else:
             args.append(argv[i])
         i += 1
     if len(args) != 1:
         print(
             "usage: check_dev_plan.py PLAN.json [--expect-bucket NAME] "
-            "[--require-lake-noop] [--require-analytics] | --self-test",
+            "[--require-lake-noop] [--require-analytics] [--require-glue-job] | --self-test",
             file=sys.stderr,
         )
         return 2
@@ -347,14 +441,15 @@ def main(argv: list[str]) -> int:
         expect_bucket=expect,
         require_lake_noop=require_lake_noop,
         require_analytics=require_analytics,
+        require_glue_job=require_glue_job,
         raw=raw,
     )
     if found:
-        print("Plan is not limited to the dev lake plus Glue catalog and Athena:")
+        print("Plan is not limited to the dev lake, Glue catalog, Athena, and the one gold-orders job:")
         for item in found:
             print(f"  {item}")
         return 1
-    print("Plan is limited to the dev lake plus Glue catalog and Athena.")
+    print("Plan is limited to the dev lake, Glue catalog, Athena, and the one gold-orders job.")
     return 0
 
 

@@ -1,0 +1,108 @@
+# Start the gold-orders Glue job. This file does not run Terraform.
+# pull_request prints the job name and does not call AWS.
+# A run starts only from workflow_dispatch on main after typing
+# start-dev-gold-orders. Any other confirm value does not start the job.
+name: Dev Glue gold orders run
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type start-dev-gold-orders to start the Glue job and print its status. Any other value does not start it."
+        required: true
+        default: plan
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-glue-job-run-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    name: dry-run glue job start
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm != 'start-dev-gold-orders')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show the command without starting a job
+        run: |
+          echo "Dry run. This workflow does not start a Glue job from a pull request, and it does not start one unless confirm is start-dev-gold-orders on main."
+          echo "Job name: ecom-737334244495-dev-gold-orders"
+          echo "Region: eu-north-1"
+          echo "Account: 737334244495"
+          echo "After the apply on main, run this workflow from main and type start-dev-gold-orders."
+
+  reject-off-main:
+    name: refuse start off main
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'start-dev-gold-orders' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse
+        run: |
+          echo "Refusing to start the Glue job from ${{ github.ref }}."
+          echo "Run Dev Glue gold orders run from the main branch and type start-dev-gold-orders."
+          exit 1
+
+  start:
+    name: start gold-orders job
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'start-dev-gold-orders' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AWS_EC2_METADATA_DISABLED: "true"
+      JOB_NAME: ecom-737334244495-dev-gold-orders
+    steps:
+      - name: Require AWS access key secrets
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "::error::Repo secrets AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must both be set."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-north-1
+          allowed-account-ids: "737334244495"
+          force-skip-oidc: "true"
+          disable-retry: "true"
+          output-credentials: "false"
+
+      - name: Start the job and wait for a terminal state
+        run: |
+          set -euo pipefail
+          run_id="$(aws glue start-job-run --job-name "$JOB_NAME" --query JobRunId --output text)"
+          echo "Started ${JOB_NAME} run ${run_id}"
+          deadline=$((SECONDS + 1200))
+          state="STARTING"
+          while true; do
+            state="$(aws glue get-job-run --job-name "$JOB_NAME" --run-id "$run_id" --query 'JobRun.JobRunState' --output text)"
+            echo "state=${state}"
+            case "$state" in
+              SUCCEEDED|FAILED|TIMEOUT|STOPPED|ERROR) break ;;
+            esac
+            if (( SECONDS > deadline )); then
+              echo "Timed out waiting for ${run_id}. Last state: ${state}"
+              aws glue get-job-run --job-name "$JOB_NAME" --run-id "$run_id" \
+                --query 'JobRun.{State:JobRunState,ExecutionTime:ExecutionTime,Error:ErrorMessage,Started:StartedOn,Completed:CompletedOn}' \
+                --output json
+              exit 1
+            fi
+            sleep 20
+          done
+          aws glue get-job-run --job-name "$JOB_NAME" --run-id "$run_id" \
+            --query 'JobRun.{State:JobRunState,ExecutionTime:ExecutionTime,Error:ErrorMessage,Started:StartedOn,Completed:CompletedOn,LogGroup:LogGroupName}' \
+            --output json
+          if [[ "$state" != "SUCCEEDED" ]]; then
+            echo "Glue run ${run_id} finished ${state}. Logs are in CloudWatch log group /aws-glue/jobs, in eu-north-1."
+            exit 1
+          fi
+          echo "Glue run ${run_id} succeeded. ExecutionTime from the API is seconds of job runtime."

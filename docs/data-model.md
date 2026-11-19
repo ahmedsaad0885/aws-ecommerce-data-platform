@@ -13,7 +13,7 @@ Identifiers are strings (`ord_1001`, `prd_2001`) so samples and stores agree. Th
 
 ## Money and time
 
-Events and the catalog projection carry money as decimal strings (`"12.00"`). PostgreSQL uses `NUMERIC(12, 2)`. The gold mart's logical type is `decimal(12, 2)`. The registered NDJSON table keeps `total_amount` as text, and the saved Athena query casts it, because Athena engine version 3 does not reliably read that string as a decimal column. Floats are not in the contract. Details: [analytics.md](analytics.md).
+Events and the catalog projection carry money as decimal strings (`"12.00"`). PostgreSQL uses `NUMERIC(12, 2)`. The gold mart's logical type is `decimal(12, 2)`. The registered `gold_orders` table keeps `total_amount` as text, including inside Parquet, and the saved Athena query casts it, because Athena engine version 3 does not reliably read that string as a decimal column. Floats are not in the contract. Details: [analytics.md](analytics.md).
 
 `occurred_at` and `created_at` are ISO-8601 timestamps in UTC. Gold partitions use the UTC date of that event time. Firehose prefixes under `raw/order-events/` use arrival time, which can differ around midnight. Bronze is where the event date becomes the partition.
 
@@ -26,7 +26,7 @@ Events and the catalog projection carry money as decimal strings (`"12.00"`). Po
 | [data/schemas/json/review.schema.json](../data/schemas/json/review.schema.json) | Review file contract. |
 | [data/schemas/json/product_catalog_item.schema.json](../data/schemas/json/product_catalog_item.schema.json) | DynamoDB item shape, minus AWS attributes. |
 | [data/schemas/sql/ops_postgres.sql](../data/schemas/sql/ops_postgres.sql) | Normalized serving tables. |
-| [data/schemas/sql/gold.sql](../data/schemas/sql/gold.sql) | Athena mart columns. Registered by the analytics module as newline-delimited JSON. `LAKE_BUCKET` in the file is the real lake bucket at apply time. |
+| [data/schemas/sql/gold.sql](../data/schemas/sql/gold.sql) | Athena mart columns. `gold_orders` is Parquet. `gold_reviews` is newline-delimited JSON. `LAKE_BUCKET` in the file is the real lake bucket at apply time. |
 
 `schema_version` is `1` on the interchange records. Bump it when a consumer cannot tolerate a change.
 
@@ -91,7 +91,7 @@ Using [data/samples/order_events.ndjson](../data/samples/order_events.ndjson), t
 - `order_date` is the UTC date of `placed_at`, `2026-01-15`.
 - `item_count` is `1`. The order has one line. Quantity `2` on `prd_2001` stays on that line, and the two events still produce one gold row.
 
-The line (`prd_2001`, quantity `2`, unit price `12.00`) stays on the event. A silver line table is a later write. Gold carries the count of lines. The job that produces the row is described in [pipelines/README.md](../pipelines/README.md).
+The line (`prd_2001`, quantity `2`, unit price `12.00`) stays on the event. A silver line table is a later write. Gold carries the count of lines. The local job is described in [pipelines/README.md](../pipelines/README.md). The Glue job that writes the same rows as Parquet is [docs/gold-orders-job.md](gold-orders-job.md).
 
 ## Synthetic generator
 

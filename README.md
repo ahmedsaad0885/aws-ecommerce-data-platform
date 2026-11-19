@@ -2,7 +2,7 @@
 
 Data path for retail orders on AWS: land source data, shape it, and serve it. The domain is customers, products, orders, and reviews. A BI owner can sit on the analytical tables later. This repository is the platform those tables come from.
 
-This repository holds the architecture, the contracts, a Terraform skeleton, and a local gold transform for order events. Pull requests and merges do not deploy the platform. The dev S3 lake in `eu-north-1` is already created. A manual workflow can register the Glue Data Catalog and the Athena workgroup on that lake. See [infra/README.md](infra/README.md) and [docs/analytics.md](docs/analytics.md).
+This repository holds the architecture, the contracts, a Terraform skeleton, a local gold transform for order events, and a Glue job that writes the same rows as Parquet. Pull requests and merges do not deploy the platform. The dev S3 lake in `eu-north-1` is already created. Manual workflows register the catalog and can apply the Glue job. See [infra/README.md](infra/README.md), [docs/analytics.md](docs/analytics.md), and [docs/gold-orders-job.md](docs/gold-orders-job.md).
 
 ## Vision
 
@@ -41,12 +41,12 @@ Environments are `dev`, `staging`, and `prod`. They share one Terraform root. Ea
 | Stage | What "done" means |
 | --- | --- |
 | v0 Scaffold | Docs, contracts, Terraform that validates, CI, Python stubs. |
-| v1 Batch lakehouse | A local Python transform turns `data/samples/order_events.ndjson` into one gold order row per order. The pipeline workflow asserts that row. Still no account required. |
+| v1 Batch lakehouse | A local Python transform turns `data/samples/order_events.ndjson` into one gold order row per order. A Glue job runs those same rules on `raw/order-events/` and writes Snappy Parquet under `gold/orders/`. Applying it is manual. |
 | v2 APIs | Authentication in front of order and product reads. RDS loaded from gold. Catalog projection filled. A network path to RDS chosen deliberately, because the current Lambda is outside the VPC. |
 | v3 Streaming | A consumer on the order stream updates silver and a low-latency order status without waiting for the batch. |
 | v4 LLM | Bedrock writes a short summary onto reviews, bounded by the prompt contract in `services/llm`. |
 
-v1 is the local gold transform. The dev lake bucket exists. The Glue catalog and Athena workgroup are declared and applied by a manual workflow. Another manual workflow can land the beefy raw files under `raw/`. The Glue job that writes `gold/orders/order_date=.../` is still later. v2 remains the read API and the load into PostgreSQL. Landing steps: [docs/landing-data.md](docs/landing-data.md).
+v1 is the local gold transform plus the Glue job that writes `gold/orders/order_date=.../` as Parquet. The dev lake bucket exists. The catalog, the raw landing, and the job are applied by hand, not by a merge. A manual workflow can land the beefy raw files under `raw/`. v2 remains the read API and the load into PostgreSQL. Landing steps: [docs/landing-data.md](docs/landing-data.md). The job: [docs/gold-orders-job.md](docs/gold-orders-job.md).
 
 ## Repository layout
 
@@ -58,7 +58,7 @@ services/llm/          Review-summary contract, no model call
 data/schemas/          JSON Schema, Avro, and SQL contracts
 data/samples/          Synthetic records
 docs/                  Architecture and data model
-.github/workflows/     Validate and pipeline tests; dev plan; manual catalog apply; manual raw landing
+.github/workflows/     Validate and pipeline tests; dev plan; manual catalog, landing, and Glue applies
 ```
 
 ## Run checks locally

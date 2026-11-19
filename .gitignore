@@ -36,6 +36,10 @@ venv/
 # Local gold output from the batch transform
 pipelines/out/
 
+# Spark local runs
+derby.log
+metastore_db/
+
 # Beefy synthetic output. Regenerate with make dataset.
 data/generated/
 

@@ -52,7 +52,7 @@ flowchart TB
   llm --> rds
 ```
 
-Order lifecycle events are the only stream in this skeleton. Catalog files and reviews land as objects under `raw/` until they earn their own events. The catalog registers those drops at `raw/product-catalog/` and `raw/reviews/`. Firehose, when the streaming module is applied, writes gzipped JSON to `raw/order-events/year=YYYY/month=MM/day=DD/`, partitioned by arrival time. That module is off, and the raw order-event table is not partitioned yet. Land flat NDJSON directly under `raw/order-events/` for the table that exists. A local transform in [pipelines/](../pipelines/) collapses sample order events into gold order rows. The lake write of that row is `gold/orders/order_date=YYYY-MM-DD/`. The job that does the write is still local. It should be this same transform pointed at `raw/order-events/`.
+Order lifecycle events are the only stream in this skeleton. Catalog files and reviews land as objects under `raw/` until they earn their own events. The catalog registers those drops at `raw/product-catalog/` and `raw/reviews/`. Firehose, when the streaming module is applied, writes gzipped JSON to `raw/order-events/year=YYYY/month=MM/day=DD/`, partitioned by arrival time. That module is off, and the raw order-event table is not partitioned yet. Land flat NDJSON directly under `raw/order-events/` for the table that exists. A local transform in [pipelines/](../pipelines/) collapses sample order events into gold order rows. The lake write of that row is `gold/orders/order_date=YYYY-MM-DD/` as Snappy Parquet. The Glue job runs the same transform against `raw/order-events/`. See [gold-orders-job.md](gold-orders-job.md).
 
 Medallion prefixes, all in one bucket:
 
@@ -69,7 +69,7 @@ Medallion prefixes, all in one bucket:
 | Service | Job in this domain | In this skeleton |
 | --- | --- | --- |
 | S3 | Lake for orders, catalog, and reviews | One bucket, prefixes above, encryption, versioning, public access blocked |
-| Glue | Catalog of lake tables | Database and external tables from the contracts. No crawler, no job, and no IAM role |
+| Glue | Catalog of lake tables, and one job that writes gold orders | Database and external tables from the contracts. One Glue 5.0 job and one role. No crawler |
 | Athena | Analytical SQL for the BI owner and for ad hoc work | Workgroup on engine v3. Results in the lake bucket. A per-query scan cap. Saved queries that are not executed |
 | RDS PostgreSQL | Serving database: orders with their lines, customers, reviews | Private instance. Master password managed by Secrets Manager |
 | DynamoDB | Product catalog reads by `product_id` and by `category` | On-demand table and one GSI |
@@ -150,10 +150,10 @@ If this skeleton were applied later, the relational instance is the main idle bi
 
 **Secrets stay out of inputs.** No access key or database password is a Terraform input. The dev name prefix includes account `737334244495` so the lake bucket is globally unique: `ecom-737334244495-dev-lake`. Example files still use `example-ecom` and `REPLACE_ME_STATE_BUCKET`.
 
-**Dev apply is the lake plus the catalog.** `enable_*` defaults to true, so example tfvars still plan the full skeleton. `infra/envs/dev/terraform.tfvars` turns every flag off except the data lake and analytics, in `eu-north-1`. Analytics here is the Glue database, the external tables, and the Athena workgroup. It does not create an IAM role. A future Glue job role waits until the account can create roles. Apply is a manual workflow run with the existing access keys. It does not use OIDC. A pull request plans and does not apply. A merge does not apply. The confirm string is `apply-dev-analytics`.
+**Dev apply is the lake, the catalog, and one Glue job.** `enable_*` defaults to true, so example tfvars still plan the full skeleton. `infra/envs/dev/terraform.tfvars` turns every flag off except the data lake, analytics, and the gold-orders Glue job, in `eu-north-1`. Analytics is the Glue database, the external tables, and the Athena workgroup. The job module adds one role, used only by that job. Apply is a manual workflow run with the existing access keys. It does not use OIDC. A pull request plans and does not apply. A merge does not apply. Confirm strings are `apply-dev-analytics` and `apply-dev-glue-job`. They share one state file. The job itself starts only with `start-dev-gold-orders`. Details: [gold-orders-job.md](gold-orders-job.md).
 
 **API authentication is a feature, not a default.** Health is public if the stack is ever applied. Entity routes are absent until an authorizer exists. WAF can sit in front of that public API at the same time.
 
 ## Intentionally absent
 
-NAT gateways, interface VPC endpoints, MSK, Glue jobs and crawlers, Glue IAM roles, Lake Formation admin, QuickSight or any other BI product, API authentication, WAF, budgets, customer-managed KMS keys, and an automatic `terraform apply` on push or merge. The dev S3 lake is applied. The catalog and Athena workgroup are the next manual apply.
+NAT gateways, interface VPC endpoints, MSK, Glue crawlers, extra Glue jobs, Lake Formation admin, QuickSight or any other BI product, API authentication, WAF, budgets, customer-managed KMS keys, and an automatic `terraform apply` on push or merge. The dev S3 lake is applied. The catalog, the Athena workgroup, and the one gold-orders job are manual applies.

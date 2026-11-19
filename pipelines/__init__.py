@@ -1,5 +1,6 @@
-"""Local batch transforms and synthetic dataset generators.
+"""Local batch transforms, the Spark gold runner, and synthetic dataset generators.
 
-The modules here use the Python standard library. They do not import an AWS
-SDK and they do not call the network.
+The order rules and the dataset generators use the Python standard library.
+``glue_gold_orders`` imports PySpark. Nothing here imports an AWS SDK or calls
+the network.
 """
