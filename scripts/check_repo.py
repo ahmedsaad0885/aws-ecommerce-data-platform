@@ -64,10 +64,15 @@ REQUIRED = [
     "services/api/src/handler.py",
     "services/llm/src/summarize.py",
     ".github/workflows/dev-data-lake.yml",
+    ".github/workflows/land-dev-raw.yml",
+    "scripts/land_dev_raw.py",
+    "pipelines/datasets/landing.py",
+    "pipelines/tests/test_lake_layout.py",
     "scripts/dev_state_bucket.sh",
     "scripts/check_dev_plan.py",
     "scripts/check_catalog_contract.py",
     "docs/analytics.md",
+    "docs/landing-data.md",
     "infra/modules/analytics/tables.json",
     "infra/modules/analytics/queries.json",
 ]
@@ -266,6 +271,54 @@ def check_dev_workflow() -> list[str]:
     return errors
 
 
+def check_land_workflow() -> list[str]:
+    path = ROOT / ".github/workflows/land-dev-raw.yml"
+    if not path.is_file():
+        return []
+    text = path.read_text(encoding="utf-8")
+    errors = []
+    for banned in (
+        "id-token:",
+        "role-to-assume",
+        "terraform",
+        "s3 rm",
+        "s3 sync",
+        "--delete",
+        "ecom-737334244495-dev-tfstate",
+    ):
+        if banned in text:
+            errors.append(f"land-dev-raw workflow contains {banned.strip()!r}")
+    required_lines = (
+        "if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm != 'land-dev-raw')",
+        "if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'land-dev-raw' && github.ref != 'refs/heads/main'",
+        "if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'land-dev-raw' && github.ref == 'refs/heads/main'",
+        "python3 scripts/land_dev_raw.py plan --scale test --seed 42",
+        "python3 -m pipelines.datasets ecom --scale beefy --seed 42 --output data/generated/ecom",
+        "python3 scripts/land_dev_raw.py upload --input data/generated/ecom",
+    )
+    for required in required_lines:
+        if required not in text:
+            errors.append(f"land-dev-raw workflow is missing {required}")
+    for required in (
+        "workflow_dispatch:",
+        "pull_request:",
+        "force-skip-oidc",
+        "allowed-account-ids",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "LAND_DEV_RAW_CONFIRM",
+        "eu-north-1",
+        "737334244495",
+    ):
+        if required not in text:
+            errors.append(f"land-dev-raw workflow is missing {required}")
+    if text.count("land_dev_raw.py upload") != 1:
+        errors.append("land-dev-raw workflow must contain exactly one upload command")
+    if text.count("land_dev_raw.py plan") != 1:
+        errors.append("land-dev-raw workflow must contain exactly one plan command")
+    return errors
+
+
 def self_test_guards() -> list[str]:
     errors = []
     tfvars_path = ROOT / "infra/envs/dev/terraform.tfvars"
@@ -340,6 +393,19 @@ def self_test_guards() -> list[str]:
             or catalog_check.stderr.strip()
             or "catalog contract self-test failed"
         )
+
+    landing_check = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/land_dev_raw.py"), "self-test"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if landing_check.returncode != 0:
+        errors.append(
+            landing_check.stdout.strip()
+            or landing_check.stderr.strip()
+            or "raw landing self-test failed"
+        )
     return errors
 
 
@@ -370,6 +436,7 @@ def main() -> int:
         + check_secrets()
         + check_dev_lake_scope()
         + check_dev_workflow()
+        + check_land_workflow()
         + self_test_guards()
     )
     if errors:
@@ -377,7 +444,7 @@ def main() -> int:
         for error in errors:
             print(f"  {error}")
         return 1
-    print("Repository check ok (paths, JSON, links, secrets, dev lake and analytics scope).")
+    print("Repository check ok (paths, JSON, links, secrets, dev lake, analytics, raw landing).")
     return 0
 
 

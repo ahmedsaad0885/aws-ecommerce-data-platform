@@ -77,7 +77,7 @@ The existing lake bucket, its encryption, its lifecycle rules, and the empty pre
 - No Glue crawler, Glue job, or Glue trigger.
 - No Lake Formation permissions or Lake Formation admin.
 - No VPC, NAT gateway, RDS database, DynamoDB table, Kinesis stream, Firehose delivery stream, Lambda function, API Gateway, Bedrock role, or CloudWatch alarm.
-- No rows. Sample files stay in git. They are not uploaded.
+- No rows copied by Terraform. Sample files stay in git. A separate manual workflow can land gzipped NDJSON under the three raw prefixes. See [landing-data.md](landing-data.md). That workflow is not this apply, and it does not write `gold/`.
 - No query execution. Named queries are saved text.
 
 Bronze and silver are prefixes in the bucket and are not tables yet. There is no separate file contract for those layers.
@@ -90,7 +90,7 @@ Contract: [data/schemas/json/order_event.schema.json](../data/schemas/json/order
 
 Location: `s3://ecom-737334244495-dev-lake/raw/order-events/`.
 
-Put objects directly in that prefix, for example `raw/order-events/events.ndjson`. One JSON object per line, UTF-8. The [Hive JSON SerDe](https://docs.aws.amazon.com/athena/latest/ug/hive-json-serde.html) rejects pretty-printed objects with the error `HIVE_CURSOR_ERROR`.
+Put one object directly in that prefix. The landing workflow uses the fixed key `raw/order-events/order_events.ndjson.gz`. One JSON object per line, UTF-8, inside the gzip. The [Hive JSON SerDe](https://docs.aws.amazon.com/athena/latest/ug/hive-json-serde.html) rejects pretty-printed objects with the error `HIVE_CURSOR_ERROR`. A lowercase `.gz` suffix is how Athena knows to unwrap gzip before the SerDe sees the line. Do not also set `Content-Encoding: gzip` on the object.
 
 The table is not partitioned. [docs/architecture.md](architecture.md) describes a future Firehose layout, `raw/order-events/year=YYYY/month=MM/day=DD/`, partitioned by arrival time. Streaming is not enabled, those prefixes are not in the catalog, and this table does not pretend they are. When Firehose exists, adding `year`, `month`, and `day` projection is a separate change. Until then, land flat NDJSON in `raw/order-events/` itself.
 
@@ -100,7 +100,7 @@ Column types follow the JSON Schema. Money (`total_amount`, and `unit_price` ins
 
 Contract: [data/schemas/json/product_catalog_item.schema.json](../data/schemas/json/product_catalog_item.schema.json).
 
-Location: `s3://ecom-737334244495-dev-lake/raw/product-catalog/`.
+Location: `s3://ecom-737334244495-dev-lake/raw/product-catalog/`. The landing workflow writes `raw/product-catalog/product_catalog.ndjson.gz`.
 
 The architecture says catalog files land under `raw/` until they have their own events. This prefix is that landing spot, next to `raw/order-events/`. It is not the DynamoDB table. DynamoDB is a different module and it is off. `price` is a decimal string. `status` is `active` or `discontinued`. Not partitioned.
 
@@ -108,7 +108,7 @@ The architecture says catalog files land under `raw/` until they have their own 
 
 Contract: [data/schemas/json/review.schema.json](../data/schemas/json/review.schema.json).
 
-Location: `s3://ecom-737334244495-dev-lake/raw/reviews/`.
+Location: `s3://ecom-737334244495-dev-lake/raw/reviews/`. The landing workflow writes `raw/reviews/reviews.ndjson.gz`.
 
 `rating` is an integer from 1 to 5. `created_at` is ISO-8601 text. `summary` is not a column here. The JSON Schema does not include it. Not partitioned.
 
@@ -178,6 +178,8 @@ A query that crosses the cap is canceled. Canceled queries are billed for the da
 
 The cap is a dev safety rail. Raising it is a one-line change to `athena_bytes_scanned_cutoff_per_query` in the dev tfvars, then another manual apply. Do not raise it so a query can scan the account by accident.
 
+The beefy raw files fit under this cap when they are stored as gzip. Athena charges the compressed size: the [optimize data](https://docs.aws.amazon.com/athena/latest/ug/performance-tuning-data-optimization-techniques.html) page says you pay for the bytes scanned before decompression. For JSON, the [compression](https://docs.aws.amazon.com/athena/latest/ug/compression-formats.html) page says Athena picks gzip from a lowercase `.gz` suffix. The Hive JSON SerDe still sees one JSON object per line after that. The table definitions do not change. Measured sizes and the decision to keep `10485760` are in [landing-data.md](landing-data.md).
+
 ## Saved queries
 
 They live under [infra/modules/analytics/queries](../infra/modules/analytics/queries). Each one is a `SELECT` with `LIMIT 20`. The gold queries also filter the partition column. Terraform stores them. It does not start them.
@@ -202,7 +204,7 @@ Zero rows is the correct result. The prefixes are empty. A query that errors is 
 6. Choose the database `ecom_737334244495_dev`. The underscores are required. The hyphenated form is the workgroup name, not the database name.
 7. Open **Saved queries** and run `gold_orders_sample_date`, or paste the statement from [gold_orders_sample_date.sql](../infra/modules/analytics/queries/gold_orders_sample_date.sql).
 8. A finished query with zero rows means the catalog is visible and the prefix is empty. Download the result only if you want to see the column headers Athena wrote. That small file is under `athena-results/` and expires after 7 days.
-9. To see a row later, upload NDJSON to the prefix in the table section above, then run the saved query again. This repository does not upload that file for you.
+9. To see a row, land the gzipped raw files with the manual workflow in [landing-data.md](landing-data.md), then run the saved query again. Terraform does not upload those files. A query with `LIMIT` still reads the whole JSON object, so the object has to fit under the 10 MiB cap. The gzipped beefy files do.
 
 The editor's database and workgroup are part of the request. A saved query run from the primary workgroup ignores this stack's result location and scan cap.
 
@@ -270,4 +272,4 @@ This workgroup does not use provisioned capacity and does not use Athena Spark. 
 
 A Glue job that reads `raw/order-events/` and writes `gold/orders/order_date=.../` needs an IAM role. That role is not in this module. The comment in the module says why: role creation waits until the account can create roles.
 
-Firehose arrival-time prefixes are not catalog partitions yet. Parquet is not the storage of these tables yet. The gold SQL file says both are later, and that the columns can stay. Sample NDJSON is not copied into the bucket by Terraform.
+Firehose arrival-time prefixes are not catalog partitions yet. Parquet is not the storage of these tables yet. The gold SQL file says both are later, and that the columns can stay. Sample NDJSON is not copied into the bucket by Terraform. The manual landing workflow can put gzipped raw NDJSON. It does not write `gold/`, and it does not add the Glue job that would. That job is a later change. The hook is described in [landing-data.md](landing-data.md).

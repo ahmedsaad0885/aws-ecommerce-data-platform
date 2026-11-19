@@ -67,6 +67,8 @@ Reviews exist only after an order that was paid or shipped, and only for a produ
 
 Field meanings for the orders domain stay in [data-model.md](data-model.md).
 
+The beefy e-commerce files can be copied into the dev lake by a manual GitHub Actions workflow. It uploads order events, the product catalog, and reviews as gzip NDJSON. It does not upload customers, because there is no Glue table for them. It does not upload any airport file. Object names, the button to press, and the measured sizes are in [landing-data.md](landing-data.md).
+
 ## Airport streams
 
 | File | Grain |

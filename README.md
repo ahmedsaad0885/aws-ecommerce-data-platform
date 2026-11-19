@@ -27,7 +27,7 @@ Flow, in one pass:
 
 1. Orders, catalog files, and reviews land in an S3 lake (`raw/`, then `bronze/`, `silver/`, `gold/`).
 2. Order lifecycle events also go to EventBridge, then Kinesis, then Firehose back into `raw/order-events/`.
-3. Glue holds the catalog. Athena queries gold. That is the analytical path for a future BI owner. The dev catalog and workgroup are described in [docs/analytics.md](docs/analytics.md). They are empty until files are landed, and they are not created until the manual apply.
+3. Glue holds the catalog. Athena queries gold. That is the analytical path for a future BI owner. The dev catalog and workgroup are described in [docs/analytics.md](docs/analytics.md). They are empty until files are landed, and they are not created until the manual apply. A second manual workflow can land the beefy raw files. See [docs/landing-data.md](docs/landing-data.md).
 4. Gold loads an RDS PostgreSQL database, which is the serving copy for orders, customers, and reviews.
 5. A DynamoDB table serves product lookups by id and by category.
 6. API Gateway and Lambda expose `GET /health`. Order and product routes wait for authentication.
@@ -46,7 +46,7 @@ Environments are `dev`, `staging`, and `prod`. They share one Terraform root. Ea
 | v3 Streaming | A consumer on the order stream updates silver and a low-latency order status without waiting for the batch. |
 | v4 LLM | Bedrock writes a short summary onto reviews, bounded by the prompt contract in `services/llm`. |
 
-v1 is the local gold transform. The dev lake bucket exists. The next lakehouse step is the Glue catalog and Athena workgroup on that bucket, then pointing the same job at `raw/order-events/` and writing `gold/orders/order_date=.../`. v2 remains the read API and the load into PostgreSQL.
+v1 is the local gold transform. The dev lake bucket exists. The Glue catalog and Athena workgroup are declared and applied by a manual workflow. Another manual workflow can land the beefy raw files under `raw/`. The Glue job that writes `gold/orders/order_date=.../` is still later. v2 remains the read API and the load into PostgreSQL. Landing steps: [docs/landing-data.md](docs/landing-data.md).
 
 ## Repository layout
 
@@ -58,7 +58,7 @@ services/llm/          Review-summary contract, no model call
 data/schemas/          JSON Schema, Avro, and SQL contracts
 data/samples/          Synthetic records
 docs/                  Architecture and data model
-.github/workflows/     Validate and pipeline tests; dev plan; manual dev catalog apply
+.github/workflows/     Validate and pipeline tests; dev plan; manual catalog apply; manual raw landing
 ```
 
 ## Run checks locally
@@ -76,6 +76,8 @@ That formats Terraform, runs `terraform init -backend=false` and `terraform vali
 `make pipeline` installs pytest, runs the order-transform tests, writes `pipelines/out/gold_orders.ndjson` from `data/samples/order_events.ndjson`, and checks that file. Details: [pipelines/README.md](pipelines/README.md).
 
 `make dataset` writes the beefy e-commerce and airport histories under `data/generated/`. That directory is gitignored. `make dataset-ecom` and `make dataset-airports` run one side. `make dataset-sample` rewrites the small committed snapshots at seed 42. Scales and overrides: [docs/datasets.md](docs/datasets.md).
+
+`make land-dry-run` prints the three dev-lake object keys and the gzip sizes for the small `test` scale. It does not call AWS and it does not upload. The manual upload, which uses the beefy scale, is in [docs/landing-data.md](docs/landing-data.md).
 
 There is no local cloud emulator. A local PostgreSQL loaded from `data/schemas/sql/ops_postgres.sql` is a reasonable v2 step, still without cloud credentials.
 

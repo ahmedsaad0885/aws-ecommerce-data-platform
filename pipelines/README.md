@@ -58,7 +58,7 @@ Silver line output (the `prd_2001` quantity and unit price as their own rows) is
 
 ### Next
 
-The dev lake bucket exists. The catalog table for this output is `gold_orders`, partitioned by `order_date`, with files at `gold/orders/order_date=YYYY-MM-DD/`. Point this same transform at objects under `raw/order-events/` when you are ready to write that prefix. Glue can run the module later. The IAM role for that job is not in the analytics module. Role creation waits until the account can create roles. Queries until then run as the IAM user who starts them. This milestone still stops at the local file. The console steps are in [docs/analytics.md](../docs/analytics.md).
+The dev lake bucket exists. The catalog table for this output is `gold_orders`, partitioned by `order_date`, with files at `gold/orders/order_date=YYYY-MM-DD/`. The raw landing workflow can put gzip NDJSON at `raw/order-events/order_events.ndjson.gz` (and the catalog and review keys beside it). This transform still reads plain NDJSON, not gzip, and it still writes a local file. A later Glue PySpark job can gunzip that object, run this same collapse, and write Parquet under `gold/orders/order_date=YYYY-MM-DD/`. That job is not in this repository yet. It needs an IAM role, and role creation waits until the account can create roles. Queries until then run as the IAM user who starts them. Landing steps: [docs/landing-data.md](../docs/landing-data.md). Console steps for the catalog: [docs/analytics.md](../docs/analytics.md).
 
 ## Synthetic datasets
 
