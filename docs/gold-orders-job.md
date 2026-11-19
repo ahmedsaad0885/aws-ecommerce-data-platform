@@ -167,7 +167,7 @@ The gzip object is about 10.1 MB, roughly 370 KB under the workgroup cap. A raw 
 
 Do the same for the gold count. Parquet stores columns, not whole JSON lines, and gold has one row per order instead of one row per event. The gold scanned figure should be far below the raw scanned figure, and comfortably under 10 MiB. That gap is why gold is Parquet. The cap stays at 10 MiB. Do not raise it to make the raw scan fit.
 
-The saved query `gold_orders_sample_date` still filters `order_date = '2026-01-15'`. The landed raw file is the large generated set, not the two-line sample. That saved query returns rows only when some order's `placed_at` is that UTC date. Zero rows there does not mean the job failed. Use the count above.
+The saved query `gold_orders_sample_date` still filters `order_date = '2026-01-15'`. Its text is left exactly as it was deployed. Athena replaces a named query when the text changes, and that delete-and-create is rejected by the plan guard. The comment inside that saved query still says newline-delimited JSON. The catalog table is Parquet. The landed raw file is the large generated set, not the two-line sample. That saved query returns rows only when some order's `placed_at` is that UTC date. Zero rows there does not mean the job failed. Use the count above.
 
 `gold_reviews` is unchanged and still empty.
 
