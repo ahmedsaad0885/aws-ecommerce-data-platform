@@ -1,8 +1,10 @@
-# Dev S3 lake plus Glue Data Catalog and Athena. Access keys from repo secrets.
-# No OIDC and no role assumption. pull_request plans and never applies.
-# Apply is workflow_dispatch on main after typing apply-dev-analytics.
-# Merging this workflow does not create resources. The retired confirm
-# string apply-dev-lake does not apply.
+# Dev S3 lake, Glue Data Catalog, Athena, and the one gold-orders Glue job.
+# Access keys from repo secrets. No OIDC and no role assumption.
+# pull_request plans and never applies. Apply is workflow_dispatch on main
+# after typing apply-dev-analytics. That apply uses the same state as
+# Dev Glue gold orders, so it will also create the job role if it is still
+# pending. Do not run both applies at once. The retired confirm string
+# apply-dev-lake does not apply. Merging does not create resources.
 name: Dev lake and analytics
 
 on:
@@ -96,7 +98,7 @@ jobs:
           terraform -chdir=infra plan -input=false -lock-timeout=120s -var-file=envs/dev/terraform.tfvars -out=dev-lake.tfplan
           terraform -chdir=infra show -no-color dev-lake.tfplan | tee dev-lake-plan.txt
           terraform -chdir=infra show -json dev-lake.tfplan > dev-lake-plan.json
-          python3 scripts/check_dev_plan.py dev-lake-plan.json --expect-bucket ecom-737334244495-dev-lake --require-lake-noop --require-analytics
+          python3 scripts/check_dev_plan.py dev-lake-plan.json --expect-bucket ecom-737334244495-dev-lake --require-lake-noop --require-analytics --require-glue-job
 
       - name: Explain a missing state bucket
         if: steps.state.outputs.mode == 'missing'
@@ -214,5 +216,5 @@ jobs:
           terraform -chdir=infra plan -input=false -lock-timeout=120s -var-file=envs/dev/terraform.tfvars -out=dev-lake.tfplan
           terraform -chdir=infra show -no-color dev-lake.tfplan | tee dev-lake-plan.txt
           terraform -chdir=infra show -json dev-lake.tfplan > dev-lake-plan.json
-          python3 scripts/check_dev_plan.py dev-lake-plan.json --expect-bucket ecom-737334244495-dev-lake --require-lake-noop --require-analytics
+          python3 scripts/check_dev_plan.py dev-lake-plan.json --expect-bucket ecom-737334244495-dev-lake --require-lake-noop --require-analytics --require-glue-job
           terraform -chdir=infra apply -input=false -lock-timeout=120s dev-lake.tfplan

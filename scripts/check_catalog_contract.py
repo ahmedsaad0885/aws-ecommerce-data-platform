@@ -56,6 +56,9 @@ SQL_TYPE_TO_HIVE = {
 SERDE = "org.apache.hive.hcatalog.data.JsonSerDe"
 INPUT_FORMAT = "org.apache.hadoop.mapred.TextInputFormat"
 OUTPUT_FORMAT = "org.apache.hadoop.hive.ql.io.IgnoreKeyTextOutputFormat"
+PARQUET_SERDE = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+PARQUET_INPUT = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+PARQUET_OUTPUT = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 TIMESTAMP_FORMATS = "yyyy-MM-dd'T'HH:mm:ss'Z',yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
 PROJECTION_RANGE = "2020-01-01,NOW"
 ENGINE = "Athena engine version 3"
@@ -79,7 +82,7 @@ FROM_TABLE = re.compile(r"\bFROM\s+([A-Za-z_][A-Za-z0-9_]*)\b", re.IGNORECASE)
 GOLD_TABLE = re.compile(
     r"CREATE EXTERNAL TABLE (\w+) \((.*?)\)\s*"
     r"PARTITIONED BY \((\w+) (\w+)\)\s*"
-    r"ROW FORMAT SERDE '([^']+)'\s*"
+    r"(.*?)"
     r"LOCATION 's3://LAKE_BUCKET/([^']+)';",
     re.DOTALL,
 )
@@ -140,10 +143,17 @@ def avro_names(path: Path) -> list[str]:
     return names
 
 
+def _quoted(storage: str, label: str) -> str | None:
+    match = re.search(rf"{label} '([^']+)'", storage)
+    if match is None:
+        return None
+    return match.group(1)
+
+
 def parse_gold_sql(text: str) -> dict[str, dict]:
     found = {}
     for match in GOLD_TABLE.finditer(text):
-        name, body, partition, partition_type, serde, location = match.groups()
+        name, body, partition, partition_type, storage, location = match.groups()
         columns = []
         for raw in body.splitlines():
             line = raw.strip().rstrip(",")
@@ -154,7 +164,9 @@ def parse_gold_sql(text: str) -> dict[str, dict]:
         found[name] = {
             "columns": columns,
             "partition": (partition, SQL_TYPE_TO_HIVE[partition_type]),
-            "serde": serde,
+            "serde": _quoted(storage, "ROW FORMAT SERDE"),
+            "input_format": _quoted(storage, "INPUTFORMAT"),
+            "output_format": _quoted(storage, "OUTPUTFORMAT"),
             "location": location,
         }
     return found
@@ -246,8 +258,20 @@ def contract_problems(
             problems.append(
                 f"{name} location tables={table.get('prefix')!r} sql={parsed['location']!r} expected={location!r}"
             )
-        if parsed["serde"] != SERDE:
-            problems.append(f"gold.sql serde for {name} is {parsed['serde']!r}")
+        if name == "gold_orders":
+            if table.get("format") != "parquet":
+                problems.append(f"{name} format must be parquet, got {table.get('format')!r}")
+            if parsed["serde"] != PARQUET_SERDE:
+                problems.append(f"gold.sql serde for {name} is {parsed['serde']!r}")
+            if parsed["input_format"] != PARQUET_INPUT or parsed["output_format"] != PARQUET_OUTPUT:
+                problems.append(f"gold.sql Parquet formats for {name} drifted")
+        else:
+            if table.get("format") not in (None, "json"):
+                problems.append(f"{name} must stay json, got {table.get('format')!r}")
+            if parsed["serde"] != SERDE:
+                problems.append(f"gold.sql serde for {name} is {parsed['serde']!r}")
+            if parsed["input_format"] is not None or parsed["output_format"] is not None:
+                problems.append(f"{name} must stay on the JSON SerDe line, without Parquet formats")
         projection = table.get("projection") or {}
         partition_name = parsed["partition"][0]
         if projection.get("column") != partition_name:
@@ -288,11 +312,22 @@ def contract_problems(
         None,
     )
     if amount is None or amount.get("type") != "string":
-        problems.append("gold_orders.total_amount must stay string so the JSON decimal text is readable")
+        problems.append("gold_orders.total_amount must stay string so the decimal text stays exact")
     if count is None or count.get("type") != "int":
         problems.append("gold_orders.item_count must stay int")
 
-    for token in (SERDE, INPUT_FORMAT, OUTPUT_FORMAT, TIMESTAMP_FORMATS, ENGINE, "bytes_scanned_cutoff_per_query"):
+    for token in (
+        SERDE,
+        INPUT_FORMAT,
+        OUTPUT_FORMAT,
+        PARQUET_SERDE,
+        PARQUET_INPUT,
+        PARQUET_OUTPUT,
+        TIMESTAMP_FORMATS,
+        ENGINE,
+        "bytes_scanned_cutoff_per_query",
+        "parquet.compression",
+    ):
         if token not in terraform:
             problems.append(f"analytics module is missing {token}")
     if "tables.json" not in terraform or "queries.json" not in terraform:
@@ -377,6 +412,11 @@ def self_test() -> list[str]:
     relocated["gold_orders"]["prefix"] = "gold/somewhere-else/"
     if not contract_problems(relocated, gold_sql, terraform, descriptions, sql):
         errors.append("self-test allowed a gold prefix change")
+
+    json_gold = json.loads(json.dumps(tables))
+    json_gold["gold_orders"]["format"] = "json"
+    if not any("parquet" in item for item in contract_problems(json_gold, gold_sql, terraform, descriptions, sql)):
+        errors.append("self-test allowed gold_orders to leave Parquet")
 
     role = terraform + '\nresource "aws_iam_role" "glue" {}\n'
     if not any("aws_iam_role" in item for item in contract_problems(tables, gold_sql, role, descriptions, sql)):

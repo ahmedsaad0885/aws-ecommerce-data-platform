@@ -3,7 +3,7 @@
 
 Confirms required scaffold paths exist, JSON and NDJSON parse, relative
 markdown links resolve, obvious secret material is absent, and the
-committed dev config stays a lake-plus-analytics eu-north-1 apply.
+committed dev config stays a lake, catalog, and gold-orders job in eu-north-1.
 """
 
 from __future__ import annotations
@@ -73,8 +73,14 @@ REQUIRED = [
     "scripts/check_catalog_contract.py",
     "docs/analytics.md",
     "docs/landing-data.md",
+    "docs/gold-orders-job.md",
     "infra/modules/analytics/tables.json",
     "infra/modules/analytics/queries.json",
+    "infra/modules/glue-jobs/main.tf",
+    "pipelines/glue_gold_orders.py",
+    "pipelines/glue_job_main.py",
+    ".github/workflows/dev-glue-job.yml",
+    ".github/workflows/dev-glue-job-run.yml",
 ]
 
 SKIP_DIRS = {".git", ".terraform", ".venv", "venv", "__pycache__", ".build"}
@@ -165,6 +171,7 @@ DEV_TFVARS = {
     "enable_networking": "false",
     "enable_data_lake": "true",
     "enable_analytics": "true",
+    "enable_glue_jobs": "true",
     "athena_bytes_scanned_cutoff_per_query": "10485760",
     "enable_relational": "false",
     "enable_nosql": "false",
@@ -254,6 +261,7 @@ def check_dev_workflow() -> list[str]:
         "check_dev_plan.py",
         "--require-lake-noop",
         "--require-analytics",
+        "--require-glue-job",
         "ecom-737334244495-dev-lake",
         "force-skip-oidc",
         "AWS_ACCESS_KEY_ID",
@@ -319,6 +327,65 @@ def check_land_workflow() -> list[str]:
     return errors
 
 
+def check_glue_workflows() -> list[str]:
+    errors = []
+    apply_path = ROOT / ".github/workflows/dev-glue-job.yml"
+    run_path = ROOT / ".github/workflows/dev-glue-job-run.yml"
+    if not apply_path.is_file() or not run_path.is_file():
+        return errors
+    apply = apply_path.read_text(encoding="utf-8")
+    run = run_path.read_text(encoding="utf-8")
+    for label, text in (("dev-glue-job", apply), ("dev-glue-job-run", run)):
+        for banned in ("id-token:", "role-to-assume", "\npush:"):
+            if banned in text:
+                errors.append(f"{label} workflow contains {banned.strip()!r}")
+        for required in (
+            "workflow_dispatch:",
+            "force-skip-oidc",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "eu-north-1",
+            "737334244495",
+            "refs/heads/main",
+        ):
+            if required not in text:
+                errors.append(f"{label} workflow is missing {required}")
+    for required in (
+        "pull_request:",
+        "apply-dev-glue-job",
+        "check_dev_plan.py",
+        "--require-lake-noop",
+        "--require-analytics",
+        "--require-glue-job",
+        "ecom-737334244495-dev-lake",
+        "ecom-737334244495-dev-gold-orders",
+    ):
+        if required not in apply:
+            errors.append(f"dev-glue-job workflow is missing {required}")
+    if apply.count("terraform -chdir=infra apply") != 1:
+        errors.append("dev-glue-job workflow must contain exactly one terraform apply")
+    if "terraform -chdir=infra apply" in run or "terraform apply" in run:
+        errors.append("dev-glue-job-run workflow must not terraform apply")
+    if run.count("aws glue start-job-run") != 1:
+        errors.append("dev-glue-job-run workflow must contain exactly one start-job-run")
+    for required in ("start-dev-gold-orders", "ecom-737334244495-dev-gold-orders", "pull_request:"):
+        if required not in run:
+            errors.append(f"dev-glue-job-run workflow is missing {required}")
+    module = (ROOT / "infra/modules/glue-jobs/main.tf").read_text(encoding="utf-8")
+    for required in ('"5.0"', '"G.1X"', "${var.name}-gold-orders"):
+        if required not in module:
+            errors.append(f"glue-jobs module is missing {required}")
+    if re.search(r"number_of_workers\s+=\s+2\b", module) is None:
+        errors.append("glue-jobs module must keep 2 workers")
+    if re.search(r"max_retries\s+=\s+0\b", module) is None:
+        errors.append("glue-jobs module must keep max_retries at 0")
+    if module.count('resource "aws_iam_role"') != 1:
+        errors.append("glue-jobs module must declare exactly one IAM role")
+    if 'resource "aws_glue_crawler"' in module or module.count('resource "aws_glue_job"') != 1:
+        errors.append("glue-jobs module must declare exactly one Glue job and no crawler")
+    return errors
+
+
 def self_test_guards() -> list[str]:
     errors = []
     tfvars_path = ROOT / "infra/envs/dev/terraform.tfvars"
@@ -336,6 +403,9 @@ def self_test_guards() -> list[str]:
             "enable_analytics" in item for item in scope_errors(analytics_off, good_be)
         ):
             errors.append("scope self-test did not reject enable_analytics=false")
+        glue_off = good_tf.replace("enable_glue_jobs     = true", "enable_glue_jobs     = false", 1)
+        if glue_off == good_tf or not any("enable_glue_jobs" in item for item in scope_errors(glue_off, good_be)):
+            errors.append("scope self-test did not reject enable_glue_jobs=false")
         cutoff = good_tf.replace("10485760", "999", 1)
         if cutoff == good_tf or not any(
             "athena_bytes_scanned_cutoff_per_query" in item for item in scope_errors(cutoff, good_be)
@@ -437,6 +507,7 @@ def main() -> int:
         + check_dev_lake_scope()
         + check_dev_workflow()
         + check_land_workflow()
+        + check_glue_workflows()
         + self_test_guards()
     )
     if errors:
@@ -444,7 +515,7 @@ def main() -> int:
         for error in errors:
             print(f"  {error}")
         return 1
-    print("Repository check ok (paths, JSON, links, secrets, dev lake, analytics, raw landing).")
+    print("Repository check ok (paths, JSON, links, secrets, dev lake, analytics, raw landing, glue job).")
     return 0
 
 

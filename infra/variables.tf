@@ -37,6 +37,17 @@ variable "enable_analytics" {
   }
 }
 
+variable "enable_glue_jobs" {
+  description = "Upload the gold-orders Glue script and create one Glue job plus the single IAM role that job assumes. Defaults on so example tfvars stay a full-stack plan. The committed dev tfvars turns this on. Does not create a crawler."
+  type        = bool
+  default     = true
+
+  validation {
+    condition     = !var.enable_glue_jobs || (var.enable_data_lake && var.enable_analytics)
+    error_message = "enable_glue_jobs requires enable_data_lake and enable_analytics."
+  }
+}
+
 variable "athena_bytes_scanned_cutoff_per_query" {
   description = "Per-query data scanned limit on the Athena workgroup, in bytes. Athena cancels a query that goes past it. The smallest value the AWS provider accepts is 10485760 (10 MiB). Ignored when analytics is off."
   type        = number

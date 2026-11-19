@@ -6,7 +6,7 @@ Local batch transforms. The transform uses the Python standard library. Tests ne
 
 `python -m pipelines.orders` reads order lifecycle events and writes one gold row per `order_id`. The columns follow [data/schemas/sql/gold.sql](../data/schemas/sql/gold.sql) for `gold_orders`, including the `order_date` partition value on the row.
 
-The file is NDJSON. `total_amount` stays a two-place decimal string so the cents match `DECIMAL(12, 2)` exactly. The Glue table keeps that string. The saved Athena query casts it with `CAST(total_amount AS DECIMAL(12, 2))`. A later lake write can switch the bytes to Parquet and keep `order_date` as the directory name.
+The local file is NDJSON. `total_amount` stays a two-place decimal string so the cents match `DECIMAL(12, 2)` exactly. The Glue table keeps that string inside Snappy Parquet. The saved Athena query casts it with `CAST(total_amount AS DECIMAL(12, 2))`. `order_date` is the directory name in the lake.
 
 ### Rules
 
@@ -56,9 +56,9 @@ python3 -m pipelines.orders check \
 
 Silver line output (the `prd_2001` quantity and unit price as their own rows) is a later write. This job proves the gold order grain. Field meanings: [docs/data-model.md](../docs/data-model.md).
 
-### Next
+### Glue job
 
-The dev lake bucket exists. The catalog table for this output is `gold_orders`, partitioned by `order_date`, with files at `gold/orders/order_date=YYYY-MM-DD/`. The raw landing workflow can put gzip NDJSON at `raw/order-events/order_events.ndjson.gz` (and the catalog and review keys beside it). This transform still reads plain NDJSON, not gzip, and it still writes a local file. A later Glue PySpark job can gunzip that object, run this same collapse, and write Parquet under `gold/orders/order_date=YYYY-MM-DD/`. That job is not in this repository yet. It needs an IAM role, and role creation waits until the account can create roles. Queries until then run as the IAM user who starts them. Landing steps: [docs/landing-data.md](../docs/landing-data.md). Console steps for the catalog: [docs/analytics.md](../docs/analytics.md).
+`pipelines/glue_gold_orders.py` runs the same `collapse_events` rules in Spark and writes Snappy Parquet partitioned by `order_date`. It reads gzip NDJSON, which is the object the raw landing workflow puts at `raw/order-events/order_events.ndjson.gz`. `pipelines/tests/test_spark_gold.py` requires those Parquet rows to equal the Python rows. The Glue entry, the role, the cost, and the Athena check are in [docs/gold-orders-job.md](../docs/gold-orders-job.md). Queries still run as the IAM user who starts them. Landing steps: [docs/landing-data.md](../docs/landing-data.md). Console steps for the workgroup are in [docs/analytics.md](../docs/analytics.md).
 
 ## Synthetic datasets
 

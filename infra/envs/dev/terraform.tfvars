@@ -1,7 +1,8 @@
-# Dev lake plus Glue catalog and Athena. Account 737334244495, region eu-north-1.
+# Dev lake, Glue catalog, Athena, and the gold-orders Glue job.
+# Account 737334244495, region eu-north-1.
 # Lake bucket: ecom-737334244495-dev-lake
-# CI rejects this file unless enable_data_lake and enable_analytics are the
-# only flags set to true. Analytics does not create an IAM role.
+# CI rejects this file unless those three flags are the only ones set to true.
+# The Glue job brings exactly one IAM role. Nothing else in this file does.
 aws_region  = "eu-north-1"
 environment = "dev"
 name_prefix = "ecom-737334244495"
@@ -9,6 +10,7 @@ name_prefix = "ecom-737334244495"
 enable_networking    = false
 enable_data_lake     = true
 enable_analytics     = true
+enable_glue_jobs     = true
 enable_relational    = false
 enable_nosql         = false
 enable_streaming     = false

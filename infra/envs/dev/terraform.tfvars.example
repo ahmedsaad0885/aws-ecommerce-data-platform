@@ -27,6 +27,7 @@ athena_bytes_scanned_cutoff_per_query = 10485760
 enable_networking    = true
 enable_data_lake     = true
 enable_analytics     = true
+enable_glue_jobs     = true
 enable_relational    = true
 enable_nosql         = true
 enable_streaming     = true

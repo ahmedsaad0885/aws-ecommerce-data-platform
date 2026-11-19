@@ -7,6 +7,7 @@ Terraform skeleton for the data platform. One root module, three environments. M
 | `networking` | VPC, two private subnets, gateway endpoints for S3 and DynamoDB |
 | `data-lake` | Lake bucket, prefix markers, and prefix lifecycle |
 | `analytics` | Glue database, external tables, Athena workgroup, saved queries. No IAM role |
+| `glue-jobs` | One Glue job that writes Parquet gold orders, plus the one role that job assumes |
 | `relational` | PostgreSQL instance in the private subnets |
 | `nosql` | Product catalog table |
 | `streaming` | Event bus, order stream, Firehose delivery into `raw/` |
@@ -14,7 +15,7 @@ Terraform skeleton for the data platform. One root module, three environments. M
 | `llm` | Bedrock invoke role for review summaries |
 | `observability` | Alarm topic, RDS CPU alarm, stream iterator-age alarm |
 
-Each module has an `enable_*` variable. The default is true, so the example tfvars still describe the full stack. The committed dev file sets every flag false except `enable_data_lake` and `enable_analytics`.
+Each module has an `enable_*` variable. The default is true, so the example tfvars still describe the full stack. The committed dev file sets every flag false except `enable_data_lake`, `enable_analytics`, and `enable_glue_jobs`.
 
 The design notes are in [docs/architecture.md](../docs/architecture.md).
 
@@ -48,11 +49,13 @@ Account `737334244495`, region `eu-north-1` only. The committed files are names,
 | State bucket | `ecom-737334244495-dev-tfstate` |
 | State key | `ecommerce-data-platform/dev/terraform.tfstate` |
 
-The lake is already applied. `envs/dev/terraform.tfvars` enables the data lake and the analytics catalog, and nothing else. The lake module is unchanged: one general purpose bucket, versioning, SSE-S3 (`AES256`), Block Public Access, `BucketOwnerEnforced`, a bucket policy that denies non-TLS requests, lifecycle rules, and zero-byte keys `raw/`, `bronze/`, `silver/`, and `gold/`. It does not create an IAM role.
+The lake is already applied. `envs/dev/terraform.tfvars` enables the data lake, the analytics catalog, and the gold-orders Glue job. The lake module is unchanged: one general purpose bucket, versioning, SSE-S3 (`AES256`), Block Public Access, `BucketOwnerEnforced`, a bucket policy that denies non-TLS requests, lifecycle rules, and zero-byte keys `raw/`, `bronze/`, `silver/`, and `gold/`. It does not create an IAM role.
 
-Analytics adds the Glue database, five external tables, the Athena workgroup, and five saved queries. Tables are newline-delimited JSON. Gold orders are partitioned by `order_date`. The workgroup pins Athena engine version 3, writes results to `s3://ecom-737334244495-dev-lake/athena-results/` with SSE-S3, and cancels a query that would scan more than 10 MiB (`10485760` bytes). There is still no IAM role, no crawler, and no Glue job. A future job role waits until the account can create roles. Queries run as the caller. The walkthrough, including the permission checklist, is [docs/analytics.md](../docs/analytics.md).
+Analytics adds the Glue database, five external tables, the Athena workgroup, and five saved queries. Raw tables and `gold_reviews` are newline-delimited JSON. `gold_orders` is Snappy Parquet, partitioned by `order_date`. The workgroup pins Athena engine version 3, writes results to `s3://ecom-737334244495-dev-lake/athena-results/` with SSE-S3, and cancels a query that would scan more than 10 MiB (`10485760` bytes). Queries run as the caller. The walkthrough, including the permission checklist, is [docs/analytics.md](../docs/analytics.md).
 
-Left off on purpose: VPC, NAT, RDS, DynamoDB, Kinesis, Firehose, EventBridge, Lambda, API Gateway, Bedrock, alarms, and any IAM identity.
+The glue-jobs module uploads the script and a zip of the Python rules, creates one Glue 5.0 job (G.1X, 2 workers), and creates the one IAM role that job assumes. No crawler. The walkthrough is [docs/gold-orders-job.md](../docs/gold-orders-job.md). If that apply fails on IAM, stop and report the error. Do not widen the caller's permissions.
+
+Left off on purpose: VPC, NAT, RDS, DynamoDB, Kinesis, Firehose, EventBridge, Lambda, API Gateway, Bedrock, alarms, and any IAM identity besides that one Glue role.
 
 The state bucket is not a Terraform resource. [scripts/dev_state_bucket.sh](../scripts/dev_state_bucket.sh) creates it in `eu-north-1` (`LocationConstraint` is required outside `us-east-1`) and sets the same public-access, encryption, versioning, and TLS defaults. Locking is the Terraform 1.10+ S3 lock file (`use_lockfile`). There is no DynamoDB lock table. This apply reuses that same state key. It does not create a second state.
 
@@ -62,11 +65,12 @@ Example tfvars still plan the full stack. Do not apply them for this account. Pa
 
 [`.github/workflows/dev-data-lake.yml`](../.github/workflows/dev-data-lake.yml) uses the existing access-key secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. It does not use OIDC or an assumed role. The fmt/validate job in `ci.yml` is unchanged: `terraform init -backend=false`, no credentials.
 
-- A pull request plans the dev lake and the catalog, and never applies. The plan guard requires the lake resources to be unchanged and requires the catalog, the workgroup, and the tables. It rejects IAM roles and every other module.
+- A pull request plans the dev lake, the catalog, and the gold-orders job, and never applies. The plan guard requires the lake resources to be unchanged. It requires the catalog, the workgroup, and the tables. It allows exactly one Glue role, that role's inline policy, the job, the script object, and the rules zip. It rejects every other IAM identity, every crawler, and every other module.
 - Merge does not create resources.
-- Apply is **Actions → Dev lake and analytics → Run workflow**, on `main`, with confirm set to `apply-dev-analytics`. Any other branch, or any other confirm value, does not apply. The old confirm string `apply-dev-lake` does not apply.
+- Apply the catalog and the job with **Actions → Dev Glue gold orders → Run workflow**, on `main`, confirm `apply-dev-glue-job`. **Actions → Dev lake and analytics** with `apply-dev-analytics` applies the same state. Do not run both at once. Any other branch, or any other confirm value, does not apply. The old confirm string `apply-dev-lake` does not apply.
+- Start the job with **Actions → Dev Glue gold orders run**, on `main`, confirm `start-dev-gold-orders`. That workflow does not run Terraform.
 
-That run reuses the state bucket, plans, rejects a plan that would change the lake or add anything outside the catalog and workgroup, then applies that plan. Until you type the confirm string, AWS is unchanged.
+The apply reuses the state bucket, plans, rejects a plan that would change the lake or add anything outside the allowed set, then applies that plan. Until you type the confirm string, AWS is unchanged. If the apply fails while creating the role, stop and report it.
 
 ## How raw files are landed
 

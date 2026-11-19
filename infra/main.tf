@@ -1,7 +1,7 @@
 # Each module is gated by an enable_* flag (default true, so example tfvars
 # still describe the full stack). The committed dev tfvars enables the data
-# lake and the analytics catalog only. The dev workflow refuses to plan or
-# apply unless that file stays on those two modules.
+# lake, the analytics catalog, and the gold-orders Glue job. The dev plan
+# guard allows that one job role and rejects every other identity.
 
 module "networking" {
   count  = var.enable_networking ? 1 : 0
@@ -27,6 +27,16 @@ module "analytics" {
   name                           = local.name
   lake_bucket_name               = var.enable_data_lake ? module.data_lake[0].bucket_name : "lake-disabled"
   bytes_scanned_cutoff_per_query = var.athena_bytes_scanned_cutoff_per_query
+}
+
+module "glue_jobs" {
+  count  = var.enable_glue_jobs ? 1 : 0
+  source = "./modules/glue-jobs"
+
+  name               = local.name
+  aws_region         = var.aws_region
+  lake_bucket_name   = var.enable_data_lake ? module.data_lake[0].bucket_name : "lake-disabled"
+  glue_database_name = var.enable_analytics ? module.analytics[0].database_name : "disabled"
 }
 
 module "relational" {

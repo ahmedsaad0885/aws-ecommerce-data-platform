@@ -144,7 +144,8 @@
     ]
   },
   "gold_orders": {
-    "description": "One row per order, newline-delimited JSON under gold/orders/order_date=YYYY-MM-DD/. item_count is the number of lines on the winning event, not the sum of quantities and not the number of events. status is placed, paid, shipped, or cancelled. Partition order_date is the UTC date of placed_at.",
+    "description": "One row per order, Snappy Parquet under gold/orders/order_date=YYYY-MM-DD/. item_count is the number of lines on the winning event, not the sum of quantities and not the number of events. status is placed, paid, shipped, or cancelled. Partition order_date is the UTC date of placed_at. total_amount stays a decimal string.",
+    "format": "parquet",
     "prefix": "gold/orders/",
     "projection": {
       "column": "order_date",
