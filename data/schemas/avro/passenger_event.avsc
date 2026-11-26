@@ -5,7 +5,7 @@
   "doc": "Stream twin of schemas/json/passenger_event.schema.json. Names are fictional.",
   "fields": [
     { "name": "schema_version", "type": "int" },
-    { "name": "event_id", "type": "string" },
+    { "name": "event_id", "type": "string", "doc": "pev_ plus 8 digits on classic presets, 9 digits on mega day shards." },
     {
       "name": "event_type",
       "type": {
@@ -15,7 +15,7 @@
       }
     },
     { "name": "occurred_at", "type": "string", "doc": "ISO-8601 UTC" },
-    { "name": "passenger_id", "type": "string" },
+    { "name": "passenger_id", "type": "string", "doc": "pax_ plus 7 digits on classic presets, 8 digits on mega day shards." },
     { "name": "passenger_name", "type": "string" },
     { "name": "flight_id", "type": "string" },
     { "name": "airline_iata", "type": "string" },

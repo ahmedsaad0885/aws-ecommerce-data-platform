@@ -1,9 +1,10 @@
-.PHONY: fmt validate check pipeline dataset dataset-ecom dataset-airports dataset-sample land-dry-run
+.PHONY: fmt validate check pipeline dataset dataset-ecom dataset-airports dataset-airports-mega-day dataset-airports-mega-reference dataset-sample land-dry-run
 
 TF_DIR := infra
 DATASET_SEED ?= 42
 ECOM_SCALE ?= beefy
 AIRPORT_SCALE ?= beefy
+AIRPORT_DAY ?= 0
 
 fmt:
 	terraform fmt -recursive
@@ -30,6 +31,14 @@ dataset-ecom:
 
 dataset-airports:
 	python3 -m pipelines.datasets airports --scale $(AIRPORT_SCALE) --seed $(DATASET_SEED) --output data/generated/airports
+
+# One mega day. AIRPORT_DAY is the zero-based index inside the 60-day horizon.
+dataset-airports-mega-day:
+	python3 -m pipelines.datasets airports --scale mega --seed $(DATASET_SEED) --day-index $(AIRPORT_DAY) --output data/generated/airports-mega
+
+# Shared reference tables for the mega preset. Same bytes from every shard.
+dataset-airports-mega-reference:
+	python3 -m pipelines.datasets airports --scale mega --seed $(DATASET_SEED) --reference-only --output data/generated/airports-mega
 
 # Print the dev-lake keys and gzip sizes for the small test scale. No AWS calls.
 land-dry-run:

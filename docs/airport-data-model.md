@@ -57,7 +57,7 @@ Weather drives most irregular operations. A closed origin or destination cancels
 
 `pax_per_flight` is a cabin sample, not a sold load. Beefy defaults to 8 people on each flight that actually departs. Cancelled flights have no passenger events.
 
-About 6% are no-shows. A no-show is not boarded. Some of them check in first. Everyone else checks in, optionally drops a bag, and boards. Check-in is before bag drop, bag drop is before boarding, and boarding is before off-block. Names are two words from a fixed list. There is no document number, email, phone, or date of birth. The id is `pax_` plus a counter.
+About 6% are no-shows. A no-show is not boarded. Some of them check in first. Everyone else checks in, optionally drops a bag, and boards. Check-in is before bag drop, bag drop is before boarding, and boarding is before off-block. Names are two words from a fixed list. There is no document number, email, phone, or date of birth. The id is `pax_` plus a counter. Classic presets use 7 digits. The mega day shards use 8 digits so sixty days of passengers stay unique. Mega event ids for passengers use 9 digits. Both widths match the JSON Schema.
 
 ## Weather
 
@@ -111,6 +111,10 @@ Worked example, locked by the unit test, for a 606.00 nm leg at 453 kt with a 20
 | Remaining | 2385.25 |
 
 Ground speed is 433 kt and the planned airborne time is 84 minutes.
+
+## Mega preset
+
+The mega scale is the same flight rules on a larger network: 60 days, 20,000 flights a day, a cabin sample of 25, and 78 synthetic airports added to these 22. Hubs such as ATL and ORD are weighted several times a small field. Days are generated independently and written as uncompressed NDJSON in `dt=` folders. File layout, id blocks, and the measured size (about 29 GB across 60 days) are in [airport-mega-dataset.md](airport-mega-dataset.md).
 
 ## What is not modeled
 

@@ -61,6 +61,7 @@ REQUIRED = [
     "data/samples/airports/weather_reports.ndjson",
     "docs/datasets.md",
     "docs/airport-data-model.md",
+    "docs/airport-mega-dataset.md",
     "services/api/src/handler.py",
     "services/llm/src/summarize.py",
     ".github/workflows/dev-data-lake.yml",
