@@ -58,11 +58,12 @@ Medallion prefixes, all in one bucket:
 
 | Prefix | Contents |
 | --- | --- |
-| `raw/` | Source bytes. Stream landing and file drops. Treat as immutable. |
+| `raw/` | Source bytes. Stream landing and file drops. Orders stay. `raw/airports/` expires after 30 days. |
 | `bronze/` | Decoded events, typed, partitioned, one row per source event. |
 | `silver/` | Conformed customers, products, orders, and reviews. Money converted from decimal strings. |
 | `gold/` | Small marts for Athena and for the load into RDS. |
-| `athena-results/` | Query output. Expires after 7 days. |
+| `athena-results/` | Query output. Expires after 7 days. Airport queries use `athena-results/airports/`. |
+| `glue-temp/` | Glue scratch space. Expires after 7 days. |
 
 ## Service map
 

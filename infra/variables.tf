@@ -59,6 +59,17 @@ variable "athena_bytes_scanned_cutoff_per_query" {
   }
 }
 
+variable "airport_bytes_scanned_cutoff_per_query" {
+  description = "Per-query data scanned limit on the airport Athena workgroup, in bytes. 5368709120 is 5 GiB. The orders workgroup stays on athena_bytes_scanned_cutoff_per_query. Ignored when analytics is off."
+  type        = number
+  default     = 5368709120
+
+  validation {
+    condition     = var.airport_bytes_scanned_cutoff_per_query >= 10485760
+    error_message = "airport_bytes_scanned_cutoff_per_query must be at least 10485760 (10 MiB)."
+  }
+}
+
 variable "enable_relational" {
   description = "Create the PostgreSQL instance. Defaults on so example tfvars stay a full-stack plan. The committed dev tfvars turns this off."
   type        = bool

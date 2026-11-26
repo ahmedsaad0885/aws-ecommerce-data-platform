@@ -19,7 +19,11 @@ enable_llm           = false
 enable_observability = false
 
 # Smallest per-query scan cap the Terraform AWS provider accepts (10 MiB).
+# This is the orders workgroup. The airport workgroup is separate.
 athena_bytes_scanned_cutoff_per_query = 10485760
+
+# 5 GiB. Airport queries use ecom-737334244495-dev-airports, not the 10 MiB workgroup.
+airport_bytes_scanned_cutoff_per_query = 5368709120
 
 # Still required by the root variables. Unused while those modules are off.
 # AZs are eu-north-1 so a later opt-in cannot leave the region.

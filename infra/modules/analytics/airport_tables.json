@@ -1,0 +1,703 @@
+{
+  "raw_airport_passenger_events": {
+    "description": "Passenger events as uncompressed newline-delimited JSON under raw/airports/passenger_events/dt=YYYY-MM-DD/. dt is the flight operating day. A cabin sample, not a full manifest.",
+    "prefix": "raw/airports/passenger_events/",
+    "projection": {
+      "column": "dt",
+      "format": "yyyy-MM-dd",
+      "range": "2026-04-01,2026-05-30",
+      "interval": "1",
+      "interval_unit": "DAYS",
+      "template_suffix": "dt=${dt}/"
+    },
+    "partition_keys": [
+      {
+        "name": "dt",
+        "type": "string",
+        "comment": "Flight operating day, yyyy-MM-dd, taken from the directory dt=YYYY-MM-DD. Not a field inside the JSON line. Projection type is date."
+      }
+    ],
+    "columns": [
+      {
+        "name": "schema_version",
+        "type": "int",
+        "comment": "Contract version. The JSON Schema requires 1."
+      },
+      {
+        "name": "event_id",
+        "type": "string",
+        "comment": "Unique id of this event."
+      },
+      {
+        "name": "event_type",
+        "type": "string",
+        "comment": "Kind of event. The allowed values are in the JSON Schema."
+      },
+      {
+        "name": "occurred_at",
+        "type": "string",
+        "comment": "When the event happened, ISO-8601 UTC text. Not a timestamp column."
+      },
+      {
+        "name": "passenger_id",
+        "type": "string",
+        "comment": "Synthetic passenger id. Classic rows use 7 digits. Mega rows use 8."
+      },
+      {
+        "name": "passenger_name",
+        "type": "string",
+        "comment": "Two fictional words. No document number, email, or date of birth."
+      },
+      {
+        "name": "flight_id",
+        "type": "string",
+        "comment": "Stable flight id. Includes the scheduled date, flight number, origin, and scheduled destination."
+      },
+      {
+        "name": "airline_iata",
+        "type": "string",
+        "comment": "Airline IATA code."
+      },
+      {
+        "name": "origin_iata",
+        "type": "string",
+        "comment": "Origin airport IATA code."
+      },
+      {
+        "name": "destination_iata",
+        "type": "string",
+        "comment": "Destination IATA code on this row. A diversion keeps the departure destination on passenger rows."
+      },
+      {
+        "name": "bags",
+        "type": "int",
+        "comment": "Checked bags on this passenger event. Zero when none were dropped."
+      },
+      {
+        "name": "seat",
+        "type": "string",
+        "comment": "Seat such as 12A. Null when the passenger has no seat."
+      }
+    ]
+  },
+  "raw_airport_flight_events": {
+    "description": "Flight lifecycle events as uncompressed newline-delimited JSON under raw/airports/flight_events/dt=YYYY-MM-DD/. dt is the flight operating day. flight_id stays the same after a reroute.",
+    "prefix": "raw/airports/flight_events/",
+    "projection": {
+      "column": "dt",
+      "format": "yyyy-MM-dd",
+      "range": "2026-04-01,2026-05-30",
+      "interval": "1",
+      "interval_unit": "DAYS",
+      "template_suffix": "dt=${dt}/"
+    },
+    "partition_keys": [
+      {
+        "name": "dt",
+        "type": "string",
+        "comment": "Flight operating day, yyyy-MM-dd, taken from the directory dt=YYYY-MM-DD. Not a field inside the JSON line. Projection type is date."
+      }
+    ],
+    "columns": [
+      {
+        "name": "schema_version",
+        "type": "int",
+        "comment": "Contract version. The JSON Schema requires 1."
+      },
+      {
+        "name": "event_id",
+        "type": "string",
+        "comment": "Unique id of this event."
+      },
+      {
+        "name": "event_type",
+        "type": "string",
+        "comment": "Kind of event. The allowed values are in the JSON Schema."
+      },
+      {
+        "name": "occurred_at",
+        "type": "string",
+        "comment": "When the event happened, ISO-8601 UTC text. Not a timestamp column."
+      },
+      {
+        "name": "flight_id",
+        "type": "string",
+        "comment": "Stable flight id. Includes the scheduled date, flight number, origin, and scheduled destination."
+      },
+      {
+        "name": "flight_number",
+        "type": "string",
+        "comment": "Airline code plus four digits. Mega reuses the number on later days. flight_id carries the date."
+      },
+      {
+        "name": "airline_iata",
+        "type": "string",
+        "comment": "Airline IATA code."
+      },
+      {
+        "name": "tail_number",
+        "type": "string",
+        "comment": "Synthetic tail. T- plus the airline code and four digits. Not an FAA registration."
+      },
+      {
+        "name": "aircraft_type",
+        "type": "string",
+        "comment": "ICAO type designator, for example B738."
+      },
+      {
+        "name": "origin_iata",
+        "type": "string",
+        "comment": "Origin airport IATA code."
+      },
+      {
+        "name": "origin_icao",
+        "type": "string",
+        "comment": "Origin airport ICAO code."
+      },
+      {
+        "name": "destination_iata",
+        "type": "string",
+        "comment": "Destination IATA code on this row. A diversion keeps the departure destination on passenger rows."
+      },
+      {
+        "name": "destination_icao",
+        "type": "string",
+        "comment": "Destination ICAO code on this row."
+      },
+      {
+        "name": "scheduled_departure_at",
+        "type": "string",
+        "comment": "Scheduled off-block time, ISO-8601 UTC text."
+      },
+      {
+        "name": "scheduled_arrival_at",
+        "type": "string",
+        "comment": "Scheduled arrival published on this event, ISO-8601 UTC text."
+      },
+      {
+        "name": "delay_minutes",
+        "type": "int",
+        "comment": "Off-block slip against scheduled_departure_at, in minutes."
+      },
+      {
+        "name": "delay_reason",
+        "type": "string",
+        "comment": "Why the flight is delayed, cancelled, or rerouted. Null on a plain scheduled event."
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "comment": "Status after this event."
+      },
+      {
+        "name": "previous_destination_iata",
+        "type": "string",
+        "comment": "Destination before a reroute. Null when the destination did not change."
+      },
+      {
+        "name": "alternate_iata",
+        "type": "string",
+        "comment": "Nearest other airport to the destination on this event."
+      },
+      {
+        "name": "route",
+        "type": "string",
+        "comment": "Origin ICAO, DCT, destination ICAO."
+      },
+      {
+        "name": "weather_report_id",
+        "type": "string",
+        "comment": "Weather observation used by this row. wx_ plus ICAO and YYYYMMDDHH."
+      }
+    ]
+  },
+  "raw_airport_fuel_records": {
+    "description": "Fuel plans and revisions as uncompressed newline-delimited JSON under raw/airports/fuel_records/dt=YYYY-MM-DD/. Kilograms and nautical miles are decimal strings. dt is the flight operating day.",
+    "prefix": "raw/airports/fuel_records/",
+    "projection": {
+      "column": "dt",
+      "format": "yyyy-MM-dd",
+      "range": "2026-04-01,2026-05-30",
+      "interval": "1",
+      "interval_unit": "DAYS",
+      "template_suffix": "dt=${dt}/"
+    },
+    "partition_keys": [
+      {
+        "name": "dt",
+        "type": "string",
+        "comment": "Flight operating day, yyyy-MM-dd, taken from the directory dt=YYYY-MM-DD. Not a field inside the JSON line. Projection type is date."
+      }
+    ],
+    "columns": [
+      {
+        "name": "schema_version",
+        "type": "int",
+        "comment": "Contract version. The JSON Schema requires 1."
+      },
+      {
+        "name": "event_id",
+        "type": "string",
+        "comment": "Unique id of this event."
+      },
+      {
+        "name": "event_type",
+        "type": "string",
+        "comment": "Kind of event. The allowed values are in the JSON Schema."
+      },
+      {
+        "name": "occurred_at",
+        "type": "string",
+        "comment": "When the event happened, ISO-8601 UTC text. Not a timestamp column."
+      },
+      {
+        "name": "flight_id",
+        "type": "string",
+        "comment": "Stable flight id. Includes the scheduled date, flight number, origin, and scheduled destination."
+      },
+      {
+        "name": "tail_number",
+        "type": "string",
+        "comment": "Synthetic tail. T- plus the airline code and four digits. Not an FAA registration."
+      },
+      {
+        "name": "aircraft_type",
+        "type": "string",
+        "comment": "ICAO type designator, for example B738."
+      },
+      {
+        "name": "stage",
+        "type": "string",
+        "comment": "preflight or airborne."
+      },
+      {
+        "name": "origin_iata",
+        "type": "string",
+        "comment": "Origin airport IATA code."
+      },
+      {
+        "name": "origin_icao",
+        "type": "string",
+        "comment": "Origin airport ICAO code."
+      },
+      {
+        "name": "destination_iata",
+        "type": "string",
+        "comment": "Destination IATA code on this row. A diversion keeps the departure destination on passenger rows."
+      },
+      {
+        "name": "destination_icao",
+        "type": "string",
+        "comment": "Destination ICAO code on this row."
+      },
+      {
+        "name": "previous_destination_iata",
+        "type": "string",
+        "comment": "Destination before a reroute. Null when the destination did not change."
+      },
+      {
+        "name": "alternate_iata",
+        "type": "string",
+        "comment": "Nearest other airport to the destination on this event."
+      },
+      {
+        "name": "alternate_icao",
+        "type": "string",
+        "comment": "ICAO code of the alternate airport."
+      },
+      {
+        "name": "distance_nm",
+        "type": "string",
+        "comment": "Stage length in nautical miles, decimal string."
+      },
+      {
+        "name": "course_deg",
+        "type": "int",
+        "comment": "Initial course in degrees."
+      },
+      {
+        "name": "cruise_tas_kt",
+        "type": "int",
+        "comment": "Cruise true airspeed in knots."
+      },
+      {
+        "name": "wind_dir_deg",
+        "type": "int",
+        "comment": "Wind direction in degrees, the direction it comes from."
+      },
+      {
+        "name": "wind_speed_kt",
+        "type": "int",
+        "comment": "Wind speed in knots."
+      },
+      {
+        "name": "wind_component_kt",
+        "type": "int",
+        "comment": "Headwind along the course. A tailwind is negative."
+      },
+      {
+        "name": "ground_speed_kt",
+        "type": "int",
+        "comment": "Cruise true airspeed minus the headwind, never below 220."
+      },
+      {
+        "name": "burn_kg_per_hour",
+        "type": "string",
+        "comment": "Planning fuel flow, decimal string of kilograms per hour."
+      },
+      {
+        "name": "trip_minutes",
+        "type": "int",
+        "comment": "Planned airborne minutes."
+      },
+      {
+        "name": "trip_fuel_kg",
+        "type": "string",
+        "comment": "Trip fuel, decimal string of kilograms."
+      },
+      {
+        "name": "taxi_fuel_kg",
+        "type": "string",
+        "comment": "Taxi fuel, decimal string of kilograms. Zero on an airborne revision."
+      },
+      {
+        "name": "contingency_rate",
+        "type": "string",
+        "comment": "Contingency fraction. This model uses 0.05."
+      },
+      {
+        "name": "contingency_fuel_kg",
+        "type": "string",
+        "comment": "Contingency fuel, decimal string of kilograms."
+      },
+      {
+        "name": "alternate_distance_nm",
+        "type": "string",
+        "comment": "Distance from the destination to the alternate, decimal string of nautical miles."
+      },
+      {
+        "name": "alternate_fuel_kg",
+        "type": "string",
+        "comment": "Alternate fuel, decimal string of kilograms."
+      },
+      {
+        "name": "reserve_minutes",
+        "type": "int",
+        "comment": "Planning reserve in minutes."
+      },
+      {
+        "name": "reserve_fuel_kg",
+        "type": "string",
+        "comment": "Reserve fuel, decimal string of kilograms."
+      },
+      {
+        "name": "burn_so_far_kg",
+        "type": "string",
+        "comment": "Fuel already burned, decimal string of kilograms."
+      },
+      {
+        "name": "planned_fuel_kg",
+        "type": "string",
+        "comment": "Planned fuel, decimal string of kilograms."
+      },
+      {
+        "name": "extra_fuel_kg",
+        "type": "string",
+        "comment": "Extra uplift, decimal string of kilograms."
+      },
+      {
+        "name": "uplift_kg",
+        "type": "string",
+        "comment": "Fuel uplifted, decimal string of kilograms. Zero when the flight is cancelled."
+      },
+      {
+        "name": "estimated_burn_kg",
+        "type": "string",
+        "comment": "Estimated burn, decimal string of kilograms."
+      },
+      {
+        "name": "remaining_fuel_kg",
+        "type": "string",
+        "comment": "Uplift minus estimated burn, decimal string of kilograms."
+      },
+      {
+        "name": "decision_fraction",
+        "type": "string",
+        "comment": "Fraction of the planned leg already flown when the fuel figure was made."
+      },
+      {
+        "name": "weather_report_id",
+        "type": "string",
+        "comment": "Weather observation used by this row. wx_ plus ICAO and YYYYMMDDHH."
+      },
+      {
+        "name": "reroute_event_id",
+        "type": "string",
+        "comment": "FlightRerouted event this revision belongs to. Null on the original plan."
+      }
+    ]
+  },
+  "raw_airport_weather_reports": {
+    "description": "Hourly airport observations as uncompressed newline-delimited JSON under raw/airports/weather_reports/dt=YYYY-MM-DD/. dt is the operating day that wrote the file. Not a copy of a live METAR feed.",
+    "prefix": "raw/airports/weather_reports/",
+    "projection": {
+      "column": "dt",
+      "format": "yyyy-MM-dd",
+      "range": "2026-04-01,2026-05-30",
+      "interval": "1",
+      "interval_unit": "DAYS",
+      "template_suffix": "dt=${dt}/"
+    },
+    "partition_keys": [
+      {
+        "name": "dt",
+        "type": "string",
+        "comment": "Flight operating day, yyyy-MM-dd, taken from the directory dt=YYYY-MM-DD. Not a field inside the JSON line. Projection type is date."
+      }
+    ],
+    "columns": [
+      {
+        "name": "schema_version",
+        "type": "int",
+        "comment": "Contract version. The JSON Schema requires 1."
+      },
+      {
+        "name": "report_id",
+        "type": "string",
+        "comment": "Weather report id. wx_ plus ICAO and YYYYMMDDHH."
+      },
+      {
+        "name": "airport_iata",
+        "type": "string",
+        "comment": "Airport IATA code."
+      },
+      {
+        "name": "airport_icao",
+        "type": "string",
+        "comment": "Airport ICAO code."
+      },
+      {
+        "name": "observed_at",
+        "type": "string",
+        "comment": "Observation time, ISO-8601 UTC text, on the hour."
+      },
+      {
+        "name": "wind_dir_deg",
+        "type": "int",
+        "comment": "Wind direction in degrees, the direction it comes from."
+      },
+      {
+        "name": "wind_speed_kt",
+        "type": "int",
+        "comment": "Wind speed in knots."
+      },
+      {
+        "name": "wind_gust_kt",
+        "type": "int",
+        "comment": "Gust speed in knots. Null when there is no gust."
+      },
+      {
+        "name": "visibility_sm",
+        "type": "string",
+        "comment": "Visibility in statute miles, one decimal."
+      },
+      {
+        "name": "ceiling_ft",
+        "type": "int",
+        "comment": "Ceiling in feet. Null when the ceiling is unlimited."
+      },
+      {
+        "name": "precip",
+        "type": "string",
+        "comment": "none, rain, snow, or thunderstorm."
+      },
+      {
+        "name": "temp_c",
+        "type": "string",
+        "comment": "Temperature in Celsius, one decimal."
+      },
+      {
+        "name": "dewpoint_c",
+        "type": "string",
+        "comment": "Dewpoint in Celsius, one decimal. At or below the temperature."
+      },
+      {
+        "name": "altimeter_inhg",
+        "type": "string",
+        "comment": "Altimeter setting in inches of mercury."
+      },
+      {
+        "name": "flight_category",
+        "type": "string",
+        "comment": "VFR, MVFR, IFR, or LIFR, derived from ceiling and visibility."
+      },
+      {
+        "name": "airport_closed",
+        "type": "boolean",
+        "comment": "True when the airport is closed in this observation."
+      }
+    ]
+  },
+  "raw_airport_airports": {
+    "description": "Airport reference extract as uncompressed newline-delimited JSON under raw/airports/reference/airports/. Not partitioned. The original 22 codes are public. The Z-codes are synthetic.",
+    "prefix": "raw/airports/reference/airports/",
+    "projection": null,
+    "partition_keys": [],
+    "columns": [
+      {
+        "name": "schema_version",
+        "type": "int",
+        "comment": "Contract version. The JSON Schema requires 1."
+      },
+      {
+        "name": "iata",
+        "type": "string",
+        "comment": "IATA code."
+      },
+      {
+        "name": "icao",
+        "type": "string",
+        "comment": "ICAO code."
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "comment": "Display name."
+      },
+      {
+        "name": "city",
+        "type": "string",
+        "comment": "City the field stands in for. Synthetic fields are not the real airport."
+      },
+      {
+        "name": "latitude",
+        "type": "string",
+        "comment": "Latitude, four decimal places."
+      },
+      {
+        "name": "longitude",
+        "type": "string",
+        "comment": "Longitude, four decimal places."
+      },
+      {
+        "name": "elevation_ft",
+        "type": "int",
+        "comment": "Field elevation in feet."
+      }
+    ]
+  },
+  "raw_airport_airlines": {
+    "description": "Airline reference extract as uncompressed newline-delimited JSON under raw/airports/reference/airlines/. Not partitioned.",
+    "prefix": "raw/airports/reference/airlines/",
+    "projection": null,
+    "partition_keys": [],
+    "columns": [
+      {
+        "name": "schema_version",
+        "type": "int",
+        "comment": "Contract version. The JSON Schema requires 1."
+      },
+      {
+        "name": "iata",
+        "type": "string",
+        "comment": "IATA code."
+      },
+      {
+        "name": "icao",
+        "type": "string",
+        "comment": "ICAO code."
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "comment": "Display name."
+      },
+      {
+        "name": "hub_iata",
+        "type": "string",
+        "comment": "Primary hub IATA code inside this network."
+      }
+    ]
+  },
+  "raw_airport_aircraft_types": {
+    "description": "Aircraft type reference as uncompressed newline-delimited JSON under raw/airports/reference/aircraft_types/. Not partitioned. Speeds and fuel flows are planning ballparks.",
+    "prefix": "raw/airports/reference/aircraft_types/",
+    "projection": null,
+    "partition_keys": [],
+    "columns": [
+      {
+        "name": "schema_version",
+        "type": "int",
+        "comment": "Contract version. The JSON Schema requires 1."
+      },
+      {
+        "name": "icao",
+        "type": "string",
+        "comment": "ICAO code."
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "comment": "Display name."
+      },
+      {
+        "name": "seats",
+        "type": "int",
+        "comment": "Seat count used by the simulation."
+      },
+      {
+        "name": "cruise_tas_kt",
+        "type": "int",
+        "comment": "Cruise true airspeed in knots."
+      },
+      {
+        "name": "burn_kg_per_hour",
+        "type": "string",
+        "comment": "Planning fuel flow, decimal string of kilograms per hour."
+      },
+      {
+        "name": "taxi_fuel_kg",
+        "type": "string",
+        "comment": "Planning taxi fuel, decimal string of kilograms."
+      },
+      {
+        "name": "reserve_minutes",
+        "type": "int",
+        "comment": "Planning reserve in minutes."
+      }
+    ]
+  },
+  "raw_airport_aircraft": {
+    "description": "Synthetic tails as uncompressed newline-delimited JSON under raw/airports/reference/aircraft/. Not partitioned. The same fleet is written by every day shard.",
+    "prefix": "raw/airports/reference/aircraft/",
+    "projection": null,
+    "partition_keys": [],
+    "columns": [
+      {
+        "name": "schema_version",
+        "type": "int",
+        "comment": "Contract version. The JSON Schema requires 1."
+      },
+      {
+        "name": "tail_number",
+        "type": "string",
+        "comment": "Synthetic tail. T- plus the airline code and four digits. Not an FAA registration."
+      },
+      {
+        "name": "aircraft_type",
+        "type": "string",
+        "comment": "ICAO type designator, for example B738."
+      },
+      {
+        "name": "airline_iata",
+        "type": "string",
+        "comment": "Airline IATA code."
+      },
+      {
+        "name": "seats",
+        "type": "int",
+        "comment": "Seat count used by the simulation."
+      }
+    ]
+  }
+}

@@ -16,7 +16,7 @@ variable "lake_bucket_name" {
 }
 
 variable "bytes_scanned_cutoff_per_query" {
-  description = "Upper bound on bytes a single query in this workgroup may scan. Athena cancels the query past this value. The AWS provider rejects values below 10485760."
+  description = "Upper bound on bytes a single query in the orders workgroup may scan. Athena cancels the query past this value. The AWS provider rejects values below 10485760."
   type        = number
 
   validation {
@@ -25,8 +25,21 @@ variable "bytes_scanned_cutoff_per_query" {
   }
 }
 
+variable "airport_bytes_scanned_cutoff_per_query" {
+  description = "Upper bound on bytes a single query in the airport workgroup may scan. 5368709120 is 5 GiB. The orders workgroup keeps bytes_scanned_cutoff_per_query."
+  type        = number
+
+  validation {
+    condition     = var.airport_bytes_scanned_cutoff_per_query >= 10485760
+    error_message = "airport_bytes_scanned_cutoff_per_query must be at least 10485760 (10 MiB), the minimum the AWS provider accepts."
+  }
+}
+
 locals {
-  catalog_tables     = jsondecode(file("${path.module}/tables.json"))
+  catalog_tables = merge(
+    jsondecode(file("${path.module}/tables.json")),
+    jsondecode(file("${path.module}/airport_tables.json")),
+  )
   query_descriptions = jsondecode(file("${path.module}/queries.json"))
   named_queries = {
     for filename in fileset("${path.module}/queries", "*.sql") :
@@ -193,4 +206,43 @@ output "bytes_scanned_cutoff_per_query" {
 output "results_location" {
   description = "S3 prefix for Athena query results. Objects here expire after 7 days via the lake lifecycle rule."
   value       = "s3://${var.lake_bucket_name}/athena-results/"
+}
+
+resource "aws_athena_workgroup" "airports" {
+  name        = "${var.name}-airports"
+  description = "Airport POC SQL for ${var.name}. Engine v3. Results under athena-results/airports/. Per-query scan cap ${var.airport_bytes_scanned_cutoff_per_query} bytes. Queries run as the caller, not as a Glue role. The orders workgroup is a different cap."
+  state       = "ENABLED"
+
+  configuration {
+    enforce_workgroup_configuration    = true
+    publish_cloudwatch_metrics_enabled = true
+    bytes_scanned_cutoff_per_query     = var.airport_bytes_scanned_cutoff_per_query
+
+    engine_version {
+      selected_engine_version = "Athena engine version 3"
+    }
+
+    result_configuration {
+      output_location = "s3://${var.lake_bucket_name}/athena-results/airports/"
+
+      encryption_configuration {
+        encryption_option = "SSE_S3"
+      }
+    }
+  }
+}
+
+output "airport_workgroup_name" {
+  description = "Athena workgroup for the airport tables. The orders workgroup is unchanged."
+  value       = aws_athena_workgroup.airports.name
+}
+
+output "airport_bytes_scanned_cutoff_per_query" {
+  description = "Per-query bytes scanned cutoff on the airport workgroup."
+  value       = var.airport_bytes_scanned_cutoff_per_query
+}
+
+output "airport_results_location" {
+  description = "S3 prefix for airport workgroup results. The athena-results/ expiry of 7 days covers this prefix."
+  value       = "s3://${var.lake_bucket_name}/athena-results/airports/"
 }
