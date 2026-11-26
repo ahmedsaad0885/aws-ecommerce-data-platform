@@ -60,7 +60,7 @@ The lake bucket itself must stay unchanged. The plan guard rejects a plan that c
 | Need | Allowed action | Resource |
 | --- | --- | --- |
 | Find the bucket | `s3:GetBucketLocation` | The lake bucket only |
-| List the prefixes the job uses | `s3:ListBucket`, only when the prefix is one of the four folders below, in each of three shapes: the exact name, the name with a trailing `/`, and the name followed by `/*` | The lake bucket only |
+| List the prefixes the job uses | `s3:ListBucket`, only for the four job folders (exact name, trailing `/`, and `/*`) and for the two parents EMRFS checks: `gold`, `gold/`, `glue-temp`, and `glue-temp/` | The lake bucket only |
 | Read events and code | `s3:GetObject` | `raw/order-events/*` and `glue-scripts/*` |
 | Write the result, replace a partition, and clean Spark's temp files | `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:AbortMultipartUpload` | `gold/orders/*`, `glue-temp/gold-orders/*`, the directory markers `gold/orders/` and `glue-temp/gold-orders/`, and the marker objects `gold/orders_$folder$` and `glue-temp/gold-orders_$folder$` |
 | Read the catalog entries it needs | `glue:GetDatabase`, `glue:GetTable`, `glue:GetTables`, `glue:GetPartition`, `glue:GetPartitions` | The dev database, `raw_order_events`, and `gold_orders` |
@@ -179,13 +179,11 @@ The saved query `gold_orders_sample_date` still filters `order_date = '2026-01-1
 
 Reading one file and asking which files are in a folder are different permissions. `s3:GetObject` reads one key. `s3:ListBucket` is the question "which keys start with this prefix?" S3 authorizes that question on the bucket, not on the file. Spark asks it while it writes. It has to see the `order_date=` folders that are already there so it can delete those Parquet files and put the new ones in the same place. A role that can put and delete objects, and still cannot list, fails with `not authorized to perform: s3:ListBucket` and `no identity-based policy allows the s3:ListBucket action`. The objects were never the missing piece.
 
-The folder name is the prefix on that request. Hadoop sends three shapes, and the policy names all three:
+Glue 5 reads and writes `s3://` paths with EMRFS (`com.amazon.ws.emr.hadoop.fs`). Before it writes `gold/orders/order_date=.../part-....snappy.parquet`, EMRFS checks the parent folders. That check lists the prefix `gold` and the prefix `gold/`. The temp directory lists `glue-temp` and `glue-temp/`. Those requests are not a list of `gold/orders/`. The run at 18:06 Cairo failed on that parent list, at `o286.parquet`, with the same `s3:ListBucket` denial.
 
-- `gold/orders` with no slash. This is the existence check. The filesystem asks whether that prefix is there before it writes.
-- `gold/orders/` with a slash on the end. This is "list this folder."
-- `gold/orders/order_date=2026-01-15/...`, and Spark's temporary files under `gold/orders/_temporary/` and `gold/orders/.spark-staging-...`. The pattern `gold/orders/*` matches those longer names.
+In IAM, `StringLike` treats `*` as matching an empty remainder. `gold/orders/*` already matches a list whose prefix is exactly `gold/orders/`. Adding the slash by itself did not let the role list anything new, so the apply of that change did not change the outcome.
 
-The same three shapes are allowed for `raw/order-events`, `glue-temp/gold-orders`, and `glue-scripts`. The parent folder `gold/` is not. A list whose prefix is `gold/` would also return `gold/reviews`. While creating `gold/orders`, the S3A connector may look at `gold/` and, when that list is denied, it stops walking upward and still creates the orders folder. An empty prefix is a list of the whole bucket, and it is not allowed either.
+The policy now also allows the two parents EMRFS checks, each with and without the slash: `gold`, `gold/`, `glue-temp`, and `glue-temp/`. A list whose prefix is `gold/` returns the names of keys under `gold/`, including `gold/reviews` when a review file is there. A request whose prefix is `gold/reviews/...` is still denied. `gold/*` is not allowed. An empty prefix would list the whole bucket, and it is not allowed either.
 
 | What you see | What it usually means |
 | --- | --- |
@@ -193,7 +191,7 @@ The same three shapes are allowed for `raw/order-events`, `glue-temp/gold-orders
 | `SUCCEEDED` and `Wrote 0` | `raw/order-events/` had no events the contract accepts. Check the prefix in the S3 console. |
 | `FAILED` and the log says `order event rejected` | A line broke the gold contract (bad amount, unknown event type, empty items). The job does not write a partial gold result for that failure. Fix the raw line. Do not relax the rule in the job only. |
 | Job fails with `sts:AssumeRole` | The trust policy refused the call. Stop and report the error. Do not delete the `aws:SourceAccount` / `aws:SourceArn` conditions, and do not point the job at the CI user's keys. |
-| Job fails with `s3:ListBucket` denied | Spark asked to list a prefix outside the four folders, or outside the three shapes (exact name, trailing slash, and `/*`). Copy the error and stop. Do not grant `s3:*`, an empty prefix, or `gold/`. |
+| Job fails with `s3:ListBucket` denied | EMRFS asked for a prefix this policy does not name. The role may list the four job folders and the parents `gold` and `glue-temp`, each with and without a trailing slash. Copy the error and stop. Do not grant `s3:*`, an empty prefix, or `gold/*`. |
 | Athena error about the JSON SerDe on `gold_orders` | The catalog update did not apply, or an old NDJSON object is still in `gold/orders/`. The table is Parquet now. Old JSON objects in that prefix will not read. |
 | Gold count is canceled for the scan cap | The `WHERE order_date` filter is missing, or unexpected files landed under `gold/orders/`. The cap is doing its job. |
 | Lake Formation denial | Stop. This job does not grant Lake Formation admin. |
