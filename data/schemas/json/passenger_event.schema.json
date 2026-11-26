@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "passenger_event.schema.json",
   "title": "PassengerEvent",
-  "description": "Synthetic passenger movement for a cabin sample. Names are fictional. There is no document number, email, or date of birth.",
+  "description": "Synthetic passenger movement for a cabin sample. Names are fictional. There is no document number, email, or date of birth. Classic presets use 7-digit passenger ids and 8-digit event ids. The mega day shards use 8-digit passenger ids and 9-digit event ids so a 60-day run stays unique.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -21,13 +21,13 @@
   ],
   "properties": {
     "schema_version": { "type": "integer", "const": 1 },
-    "event_id": { "type": "string", "pattern": "^pev_[0-9]{8}$" },
+    "event_id": { "type": "string", "pattern": "^pev_[0-9]{8,9}$" },
     "event_type": {
       "type": "string",
       "enum": ["PassengerCheckedIn", "BagDropped", "PassengerBoarded", "PassengerNoShow"]
     },
     "occurred_at": { "type": "string", "minLength": 20 },
-    "passenger_id": { "type": "string", "pattern": "^pax_[0-9]{7}$" },
+    "passenger_id": { "type": "string", "pattern": "^pax_[0-9]{7,8}$" },
     "passenger_name": { "type": "string", "pattern": "^[A-Za-z]+ [A-Za-z]+$" },
     "flight_id": { "type": "string", "minLength": 8 },
     "airline_iata": { "type": "string", "pattern": "^[A-Z0-9]{2}$" },

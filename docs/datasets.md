@@ -15,6 +15,7 @@ The original tiny files, [data/samples/order_events.ndjson](../data/samples/orde
 | `test` | 16 products, 20 customers, 40 orders, 7 days | 1 day, 12 flights, 4 passengers per departed flight | pytest, in memory |
 | `sample` | 80 products, 100 customers, 250 orders, 14 days | 2 days, 24 flights a day, 5 passengers per departed flight | committed under `data/samples/` |
 | `beefy` | 3,000 products, 12,000 customers, 100,000 orders, 90 days | 30 days, 800 flights a day, 8 passengers per departed flight | `make dataset`, gitignored |
+| `mega` | — | 60 days, 20,000 flights a day, 25 passengers per departed flight, 100 airports | one day at a time, gitignored |
 
 E-commerce orders are placed from `2026-01-01`. Airport operations start `2026-04-01`. The manifest next to the output has the exact counts. Seed 42 at the beefy preset produces:
 
@@ -48,7 +49,18 @@ python3 -m pipelines.datasets airports --scale test --seed 42 --output /tmp/airp
 
 Environment names: `DATASET_SEED`, `ECOM_SCALE`, `ECOM_ORDERS`, `ECOM_PRODUCTS`, `ECOM_CUSTOMERS`, `ECOM_DAYS`, `ECOM_REVIEW_PROBABILITY`, `AIRPORT_SCALE`, `AIRPORT_DAYS`, `AIRPORT_FLIGHTS_PER_DAY`, `AIRPORT_PAX_PER_FLIGHT`.
 
-CI runs pytest on the `test` scale and checks that the committed `sample` files match seed 42. It does not build the beefy files.
+CI runs pytest on the `test` scale and checks that the committed `sample` files match seed 42. It does not build the beefy files or a mega day.
+
+## Mega airport preset
+
+`mega` is a separate writer from the in-memory `generate_airports` path, so the committed beefy sample stays byte-identical. One day is about 0.49 GB and about 33 seconds. Sixty days extrapolate to 29.03 GB. The output is uncompressed NDJSON under `dt=YYYY-MM-DD/` folders, rolled near 128 MiB, so sixty jobs can each write one day.
+
+```bash
+make dataset-airports-mega-day AIRPORT_DAY=0
+python3 -m pipelines.datasets airports --scale mega --seed 42 --day-index 0 --output data/generated/airports-mega
+```
+
+Layout, the shard rules, the Windows commands, and the measured counts are in [airport-mega-dataset.md](airport-mega-dataset.md).
 
 ## E-commerce streams
 

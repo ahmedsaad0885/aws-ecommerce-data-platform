@@ -75,7 +75,7 @@ That formats Terraform, runs `terraform init -backend=false` and `terraform vali
 
 `make pipeline` installs pytest, runs the order-transform tests, writes `pipelines/out/gold_orders.ndjson` from `data/samples/order_events.ndjson`, and checks that file. Details: [pipelines/README.md](pipelines/README.md).
 
-`make dataset` writes the beefy e-commerce and airport histories under `data/generated/`. That directory is gitignored. `make dataset-ecom` and `make dataset-airports` run one side. `make dataset-sample` rewrites the small committed snapshots at seed 42. Scales and overrides: [docs/datasets.md](docs/datasets.md).
+`make dataset` writes the beefy e-commerce and airport histories under `data/generated/`. That directory is gitignored. `make dataset-ecom` and `make dataset-airports` run one side. `make dataset-sample` rewrites the small committed snapshots at seed 42. Scales and overrides: [docs/datasets.md](docs/datasets.md). The mega airport preset is one day at a time (`make dataset-airports-mega-day`); size and layout are in [docs/airport-mega-dataset.md](docs/airport-mega-dataset.md).
 
 `make land-dry-run` prints the three dev-lake object keys and the gzip sizes for the small `test` scale. It does not call AWS and it does not upload. The manual upload, which uses the beefy scale, is in [docs/landing-data.md](docs/landing-data.md).
 
