@@ -82,6 +82,7 @@ REQUIRED = [
     "pipelines/glue_job_main.py",
     ".github/workflows/dev-glue-job.yml",
     ".github/workflows/dev-glue-job-run.yml",
+    ".github/workflows/dev-airports.yml",
 ]
 
 SKIP_DIRS = {".git", ".terraform", ".venv", "venv", "__pycache__", ".build"}
@@ -174,6 +175,7 @@ DEV_TFVARS = {
     "enable_analytics": "true",
     "enable_glue_jobs": "true",
     "athena_bytes_scanned_cutoff_per_query": "10485760",
+    "airport_bytes_scanned_cutoff_per_query": "5368709120",
     "enable_relational": "false",
     "enable_nosql": "false",
     "enable_streaming": "false",
@@ -325,6 +327,40 @@ def check_land_workflow() -> list[str]:
         errors.append("land-dev-raw workflow must contain exactly one upload command")
     if text.count("land_dev_raw.py plan") != 1:
         errors.append("land-dev-raw workflow must contain exactly one plan command")
+    return errors
+
+
+def check_airport_workflow() -> list[str]:
+    path = ROOT / ".github/workflows/dev-airports.yml"
+    if not path.is_file():
+        return []
+    text = path.read_text(encoding="utf-8")
+    errors = []
+    for banned in ("id-token:", "role-to-assume", "\npush:", "aws_iam_role"):
+        if banned in text:
+            errors.append(f"dev-airports workflow contains {banned.strip()!r}")
+    for required in (
+        "pull_request:",
+        "workflow_dispatch:",
+        "apply-dev-airports",
+        "check_dev_plan.py",
+        "--require-airports",
+        "ecom-737334244495-dev-lake",
+        "force-skip-oidc",
+        "allowed-account-ids",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "eu-north-1",
+        "737334244495",
+        "refs/heads/main",
+        "if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm != 'apply-dev-airports')",
+        "if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'apply-dev-airports' && github.ref != 'refs/heads/main'",
+        "if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'apply-dev-airports' && github.ref == 'refs/heads/main'",
+    ):
+        if required not in text:
+            errors.append(f"dev-airports workflow is missing {required}")
+    if text.count("terraform -chdir=infra apply") != 1:
+        errors.append("dev-airports workflow must contain exactly one terraform apply")
     return errors
 
 
@@ -610,6 +646,7 @@ def main() -> int:
         + check_dev_workflow()
         + check_land_workflow()
         + check_glue_workflows()
+        + check_airport_workflow()
         + self_test_guards()
     )
     if errors:

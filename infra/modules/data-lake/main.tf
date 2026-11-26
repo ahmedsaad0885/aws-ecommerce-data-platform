@@ -99,7 +99,44 @@ resource "aws_s3_bucket_lifecycle_configuration" "lake" {
     filter {}
 
     abort_incomplete_multipart_upload {
-      days_after_initiation = 7
+      days_after_initiation = 1
+    }
+  }
+
+  # The raw/ rule still transitions other prefixes to Standard-IA at 90 days.
+  # Objects under raw/airports/ are removed at 30 days, before that transition.
+  # Versioning is on, so the old copy is deleted too. A delete marker is small.
+  rule {
+    id     = "expire-raw-airports"
+    status = "Enabled"
+
+    filter {
+      prefix = "raw/airports/"
+    }
+
+    expiration {
+      days = 30
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+  }
+
+  rule {
+    id     = "expire-glue-temp"
+    status = "Enabled"
+
+    filter {
+      prefix = "glue-temp/"
+    }
+
+    expiration {
+      days = 7
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 7
     }
   }
 }

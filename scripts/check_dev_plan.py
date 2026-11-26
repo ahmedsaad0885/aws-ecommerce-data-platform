@@ -6,6 +6,10 @@ catalog database, external tables, the Athena workgroup, and named queries.
 Allows exactly one Glue job under module.glue_jobs: its role, that role's
 inline policy, the job, the script object, and the rules zip. Refuses every
 other IAM identity, every crawler, and every other module.
+
+``--require-airports`` is the airport apply. It allows creates of the eight
+airport tables and the airport workgroup, and an in-place update of the lake
+lifecycle configuration. Every other resource must be unchanged.
 """
 
 from __future__ import annotations
@@ -90,6 +94,23 @@ GLUE_DATA = {
     f"{GLUE_PREFIX}data.aws_caller_identity.current": "aws_caller_identity",
     f"{GLUE_PREFIX}data.archive_file.library": "archive_file",
 }
+LAKE_LIFECYCLE = "module.data_lake[0].aws_s3_bucket_lifecycle_configuration.lake"
+AIRPORT_TABLES = (
+    "raw_airport_passenger_events",
+    "raw_airport_flight_events",
+    "raw_airport_fuel_records",
+    "raw_airport_weather_reports",
+    "raw_airport_airports",
+    "raw_airport_airlines",
+    "raw_airport_aircraft_types",
+    "raw_airport_aircraft",
+)
+AIRPORT_ADDRESSES = {
+    f'module.analytics[0].aws_glue_catalog_table.this["{name}"]' for name in AIRPORT_TABLES
+}
+AIRPORT_ADDRESSES.add("module.analytics[0].aws_athena_workgroup.airports")
+_AIRPORT_ACTIONS = (["create"], ["update"], ["no-op"])
+_UNCHANGED_ACTIONS = (["no-op"], ["read"])
 
 
 def violations(
@@ -99,6 +120,7 @@ def violations(
     require_lake_noop: bool = False,
     require_analytics: bool = False,
     require_glue_job: bool = False,
+    require_airports: bool = False,
     raw: str = "",
 ) -> list[str]:
     changes = plan.get("resource_changes")
@@ -141,7 +163,10 @@ def violations(
             found.append(f"{address} ({mode} {resource_type})")
             continue
         if address.startswith("module.data_lake"):
-            if require_lake_noop and mode == "managed" and actions != ["no-op"]:
+            # The airport apply edits this one resource in place. A replace
+            # (delete then create) or a change to any other lake resource fails.
+            lifecycle_update = address == LAKE_LIFECYCLE and actions == ["update"]
+            if require_lake_noop and mode == "managed" and actions != ["no-op"] and not lifecycle_update:
                 found.append(f"{address} must stay unchanged, actions {actions}")
             if mode == "managed" and resource_type in LAKE_MANAGED:
                 continue
@@ -164,8 +189,40 @@ def violations(
         for address in GLUE_MANAGED:
             if address not in addresses:
                 found.append(f"plan is missing {address}")
+    if require_airports:
+        found.extend(_airport_violations(changes))
     if expect_bucket and expect_bucket not in raw:
         found.append(f"plan does not mention bucket {expect_bucket}")
+    return found
+
+
+def _airport_violations(changes: list) -> list[str]:
+    """The airport apply may add its tables and workgroup, and update lifecycle."""
+    found = []
+    addresses = []
+    for change in changes:
+        if not isinstance(change, dict):
+            continue
+        address = str(change.get("address", ""))
+        addresses.append(address)
+        actions = (change.get("change") or {}).get("actions")
+        if not isinstance(actions, list):
+            actions = []
+        if address in AIRPORT_ADDRESSES:
+            if actions not in _AIRPORT_ACTIONS:
+                found.append(f"{address} actions {actions} are outside the airport apply")
+            continue
+        if address == LAKE_LIFECYCLE:
+            if actions not in (["update"], ["no-op"]):
+                found.append(f"{address} actions {actions} are outside the airport apply")
+            continue
+        if actions not in _UNCHANGED_ACTIONS:
+            found.append(f"{address} actions {actions} are outside the airport apply")
+    if LAKE_LIFECYCLE not in addresses:
+        found.append(f"plan is missing {LAKE_LIFECYCLE}")
+    for address in sorted(AIRPORT_ADDRESSES):
+        if address not in addresses:
+            found.append(f"plan is missing {address}")
     return found
 
 
@@ -386,6 +443,82 @@ def self_test() -> list[str]:
     }
     if violations(noop_glue, require_glue_job=True, raw=bucket):
         errors.append("an unchanged gold-orders Glue job was rejected")
+
+    lifecycle_update = {
+        "resource_changes": [
+            _change(LAKE_LIFECYCLE, "managed", "aws_s3_bucket_lifecycle_configuration", ["update"])
+        ]
+    }
+    if violations(lifecycle_update, require_lake_noop=True, raw=bucket):
+        errors.append("an in-place lifecycle update was rejected")
+    lifecycle_replace = {
+        "resource_changes": [
+            _change(
+                LAKE_LIFECYCLE,
+                "managed",
+                "aws_s3_bucket_lifecycle_configuration",
+                ["delete", "create"],
+            )
+        ]
+    }
+    if not violations(lifecycle_replace, require_lake_noop=True, raw=bucket):
+        errors.append("a lifecycle replace was allowed")
+
+    airport_plan = {
+        "resource_changes": [
+            _change("module.data_lake[0].aws_s3_bucket.lake", "managed", "aws_s3_bucket", ["no-op"]),
+            _change(LAKE_LIFECYCLE, "managed", "aws_s3_bucket_lifecycle_configuration", ["update"]),
+            _change(
+                "module.analytics[0].aws_glue_catalog_database.this",
+                "managed",
+                "aws_glue_catalog_database",
+                ["no-op"],
+            ),
+            _change(
+                "module.analytics[0].aws_athena_workgroup.this",
+                "managed",
+                "aws_athena_workgroup",
+                ["no-op"],
+            ),
+            _change(f"{GLUE_PREFIX}aws_iam_role.job", "managed", "aws_iam_role", ["no-op"]),
+        ] + [
+            _change(address, "managed", "aws_glue_catalog_table", ["create"])
+            for address in AIRPORT_ADDRESSES
+            if "aws_glue_catalog_table" in address
+        ] + [
+            _change(
+                "module.analytics[0].aws_athena_workgroup.airports",
+                "managed",
+                "aws_athena_workgroup",
+                ["create"],
+            )
+        ]
+    }
+    airport_raw = json.dumps(airport_plan) + bucket
+    airport_flagged = violations(
+        airport_plan,
+        expect_bucket=bucket,
+        require_airports=True,
+        raw=airport_raw,
+    )
+    if airport_flagged:
+        errors.append(f"airport plan was rejected: {airport_flagged}")
+    extra_table = {
+        "resource_changes": list(airport_plan["resource_changes"]) + [
+            _change(
+                'module.analytics[0].aws_glue_catalog_table.this["raw_order_events"]',
+                "managed",
+                "aws_glue_catalog_table",
+                ["update"],
+            )
+        ]
+    }
+    if not violations(extra_table, require_airports=True, raw=bucket):
+        errors.append("airport apply allowed an orders table update")
+    if not any("raw_airport_passenger_events" in item for item in violations(
+        {"resource_changes": []}, require_airports=True, raw=bucket
+    )):
+        errors.append("require-airports did not notice a missing passenger table")
     return errors
 
 
@@ -404,6 +537,7 @@ def main(argv: list[str]) -> int:
     require_lake_noop = False
     require_analytics = False
     require_glue_job = False
+    require_airports = False
     args: list[str] = []
     i = 0
     while i < len(argv):
@@ -419,13 +553,16 @@ def main(argv: list[str]) -> int:
             require_analytics = True
         elif argv[i] == "--require-glue-job":
             require_glue_job = True
+        elif argv[i] == "--require-airports":
+            require_airports = True
         else:
             args.append(argv[i])
         i += 1
     if len(args) != 1:
         print(
             "usage: check_dev_plan.py PLAN.json [--expect-bucket NAME] "
-            "[--require-lake-noop] [--require-analytics] [--require-glue-job] | --self-test",
+            "[--require-lake-noop] [--require-analytics] [--require-glue-job] "
+            "[--require-airports] | --self-test",
             file=sys.stderr,
         )
         return 2
@@ -442,6 +579,7 @@ def main(argv: list[str]) -> int:
         require_lake_noop=require_lake_noop,
         require_analytics=require_analytics,
         require_glue_job=require_glue_job,
+        require_airports=require_airports,
         raw=raw,
     )
     if found:

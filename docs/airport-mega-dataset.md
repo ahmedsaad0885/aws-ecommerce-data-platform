@@ -164,3 +164,75 @@ The sketch for this preset was ~30 GB, with ~75 million passenger events (~22 GB
 Weather is the one count that does not match the sketch. 146,400 rows is about 52 MB, not ~260,000 rows and ~0.1 GB. Each airport-hour is written once, so `report_id` stays unique: 100 airports × 24 hours × 60 days is 144,000, and the last day adds the next 24 hours (2,400 reports) for landings after midnight. Writing a long lookback into every shard would have landed near 260,000 rows by repeating the same hours.
 
 Passenger events came out at 76.0 million and 23.2 GB, flight events at 7.32 million and 4.47 GB, fuel at 1.20 million and 1.27 GB. No knob was changed after the run.
+
+## Catalog, workgroup, and how long the files live
+
+Registering the tables does not copy the 29 GB. Terraform writes catalog entries, one Athena workgroup, and lifecycle rules. Those are configuration. The Glue Data Catalog's first million objects a month are free, and this adds eight tables. A workgroup with no queries has no Athena charge. A lifecycle rule has no charge of its own. The apply is about $0 until someone lands files or runs a query.
+
+The database is the one that already exists, `ecom_737334244495_dev`. There is no crawler. Athena is told the date folders in advance, which is partition projection.
+
+### Partition projection
+
+The event files sit in folders named `dt=2026-04-01`. `dt` is not a column inside the JSON line. It is the folder.
+
+Projection means Athena already knows every folder from 1 April 2026 through 30 May 2026 (the 60 operating days). You do not run `MSCK REPAIR TABLE`, and you do not start a crawler, when a new day lands. A query that says `WHERE dt = '2026-04-01'` reads that folder and skips the other 59. A query that forgets `dt` plans all 60 days. That is the whole dataset, about 29 GB, and the workgroup below will cancel it.
+
+The projection type is date, formatted `yyyy-MM-dd`. The Glue partition column is a string, the same way `order_date` is a string on `gold_orders`. Hive stores the folder name as text.
+
+Reference tables are not partitioned. They live at `raw/airports/reference/<name>/` because the generator writes them once, with no `dt=` folder. The event prefixes are:
+
+| Table | S3 prefix |
+| --- | --- |
+| `raw_airport_passenger_events` | `raw/airports/passenger_events/` |
+| `raw_airport_flight_events` | `raw/airports/flight_events/` |
+| `raw_airport_fuel_records` | `raw/airports/fuel_records/` |
+| `raw_airport_weather_reports` | `raw/airports/weather_reports/` |
+| `raw_airport_airports` | `raw/airports/reference/airports/` |
+| `raw_airport_airlines` | `raw/airports/reference/airlines/` |
+| `raw_airport_aircraft_types` | `raw/airports/reference/aircraft_types/` |
+| `raw_airport_aircraft` | `raw/airports/reference/aircraft/` |
+
+Columns match the JSON Schema field names and order. JSON SerDe, uncompressed NDJSON. Money and distances stay decimal strings.
+
+### The 5 GiB workgroup
+
+Airport SQL uses a second workgroup, `ecom-737334244495-dev-airports`. The orders workgroup stays at 10 MiB. This one allows 5 GiB (5,368,709,120 bytes) per query.
+
+The workgroup forces its own settings. A query cannot raise the cap or point results somewhere else from the console. Results go to `s3://ecom-737334244495-dev-lake/athena-results/airports/` with SSE-S3. The existing rule that deletes `athena-results/` after 7 days covers that prefix too.
+
+Pick this workgroup in the Athena console before you run. A query started in the orders workgroup is still capped at 10 MiB, which is smaller than one passenger file.
+
+Athena in `eu-north-1` is $5.00 per TB scanned. 5 GiB is about two and a half cents if a query is canceled at the cap. Scanning one passenger day (about 0.39 GB) is a fraction of a cent. The cap is what keeps a missing `dt` filter from reading all 29 GB.
+
+### Lifecycle
+
+The bucket already has versioning, a 90-day move of `raw/` to Standard-IA, and a 7-day expiry of `athena-results/`. Those rules stay. One lifecycle configuration holds every rule, so the new rules are added on that same resource. The bucket, encryption, and public-access block are not edited.
+
+| Rule | What it does |
+| --- | --- |
+| `raw-to-ia` | Unchanged. Other `raw/` objects move to Standard-IA after 90 days. |
+| `expire-athena-results` | Unchanged. `athena-results/` expires after 7 days. |
+| `abort-multipart` | Incomplete multipart uploads anywhere in the bucket are aborted after 1 day. This used to be 7 days. |
+| `expire-raw-airports` | Objects under `raw/airports/` expire after 30 days. The previous version is deleted after 30 days too, because versioning would otherwise keep the bytes. |
+| `expire-glue-temp` | Objects under `glue-temp/` expire after 7 days, including the previous version. |
+
+`raw/airports/` is also under `raw/`, so the 90-day Standard-IA rule matches it as well. The 30-day expiry happens first, so those objects are removed before they would have changed storage class.
+
+This apply does not upload the NDJSON. Until a later job lands files, the expiry rules have nothing to delete.
+
+### Glue role, later
+
+This pull request does not create an IAM role. The job that reads these tables still needs one.
+
+Glue 5 uses EMRFS for `s3://` paths. EMRFS lists parent prefixes, not only the leaf. `StringLike` value `raw/airports/*` already matches a list of exactly `raw/airports/`, so you do not add a second pattern for the trailing slash on top of `/*`. You do still list the parents themselves. The airport role's `s3:ListBucket` condition should include:
+
+- `raw`
+- `raw/`
+- `raw/airports`
+- `raw/airports/`
+- `gold`
+- `gold/`
+- `glue-temp`
+- `glue-temp/`
+
+The gold-orders role on `main` already lists `gold`, `gold/`, `glue-temp`, and `glue-temp/` for the orders job. The airport role is a separate change. Do not widen the orders role in that step unless the airport job assumes that same role.

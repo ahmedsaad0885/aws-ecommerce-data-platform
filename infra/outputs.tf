@@ -33,6 +33,21 @@ output "athena_results_location" {
   value       = var.enable_analytics ? module.analytics[0].results_location : null
 }
 
+output "airport_workgroup_name" {
+  description = "Athena workgroup for the airport tables. Null when analytics is off."
+  value       = var.enable_analytics ? module.analytics[0].airport_workgroup_name : null
+}
+
+output "airport_bytes_scanned_cutoff_per_query" {
+  description = "Per-query bytes scanned cutoff on the airport workgroup."
+  value       = var.enable_analytics ? module.analytics[0].airport_bytes_scanned_cutoff_per_query : null
+}
+
+output "airport_results_location" {
+  description = "S3 prefix where the airport workgroup writes query results."
+  value       = var.enable_analytics ? module.analytics[0].airport_results_location : null
+}
+
 output "gold_orders_job_name" {
   description = "Glue job that writes Parquet gold orders. Null when glue jobs are off."
   value       = var.enable_glue_jobs ? module.glue_jobs[0].job_name : null

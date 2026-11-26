@@ -69,7 +69,7 @@ These are the only new resources:
 
 Column definitions live in [infra/modules/analytics/tables.json](../infra/modules/analytics/tables.json). Terraform reads that file. The checker rebuilds the expected columns from the JSON Schemas and from [data/schemas/sql/gold.sql](../data/schemas/sql/gold.sql).
 
-The existing lake bucket, its encryption, its lifecycle rules, and the empty prefix markers stay as they are. A correct plan shows no create, change, or destroy for `module.data_lake`.
+The existing lake bucket, its encryption, and the empty prefix markers stay as they are. A plan of this workflow may update `aws_s3_bucket_lifecycle_configuration` in place when the airport expiry rules are not applied yet. It must not replace the bucket. The airport tables, the second workgroup, and those lifecycle rules are in [airport-mega-dataset.md](airport-mega-dataset.md).
 
 ## What the apply does not create
 
@@ -174,9 +174,9 @@ The cutoff needs three numbers, because the documents do not use one unit:
 - The console [per-query control](https://docs.aws.amazon.com/athena/latest/ug/workgroups-setting-control-limits-cloudwatch.html) says the minimum you can enter is 10 MB.
 - The Terraform AWS provider rejects values below `10485760` (10 × 1024 × 1024). That is the value in dev tfvars, and it is the smallest value this stack can set.
 
-A query that crosses the cap is canceled. Canceled queries are billed for the data scanned up to the cancel. The cap is what keeps that number bounded. The lake already aborts incomplete multipart uploads after 7 days, which is the cleanup the [per-query control page](https://docs.aws.amazon.com/athena/latest/ug/workgroups-setting-control-limits-cloudwatch.html) asks for when a canceled query leaves a partial result.
+A query that crosses the cap is canceled. Canceled queries are billed for the data scanned up to the cancel. The cap is what keeps that number bounded. The lake aborts incomplete multipart uploads after 1 day, which is the cleanup the [per-query control page](https://docs.aws.amazon.com/athena/latest/ug/workgroups-setting-control-limits-cloudwatch.html) asks for when a canceled query leaves a partial result.
 
-The cap is a dev safety rail. Raising it is a one-line change to `athena_bytes_scanned_cutoff_per_query` in the dev tfvars, then another manual apply. Do not raise it so a query can scan the account by accident.
+The cap is a dev safety rail. Raising it is a one-line change to `athena_bytes_scanned_cutoff_per_query` in the dev tfvars, then another manual apply. Do not raise it so a query can scan the account by accident. The airport workgroup is a different cap, 5 GiB, and it does not change this one.
 
 The beefy raw files fit under this cap when they are stored as gzip. Athena charges the compressed size: the [optimize data](https://docs.aws.amazon.com/athena/latest/ug/performance-tuning-data-optimization-techniques.html) page says you pay for the bytes scanned before decompression. For JSON, the [compression](https://docs.aws.amazon.com/athena/latest/ug/compression-formats.html) page says Athena picks gzip from a lowercase `.gz` suffix. The Hive JSON SerDe still sees one JSON object per line after that. The table definitions do not change. Measured sizes and the decision to keep `10485760` are in [landing-data.md](landing-data.md).
 

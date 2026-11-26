@@ -24,9 +24,10 @@ module "analytics" {
   count  = var.enable_analytics ? 1 : 0
   source = "./modules/analytics"
 
-  name                           = local.name
-  lake_bucket_name               = var.enable_data_lake ? module.data_lake[0].bucket_name : "lake-disabled"
-  bytes_scanned_cutoff_per_query = var.athena_bytes_scanned_cutoff_per_query
+  name                                   = local.name
+  lake_bucket_name                       = var.enable_data_lake ? module.data_lake[0].bucket_name : "lake-disabled"
+  bytes_scanned_cutoff_per_query         = var.athena_bytes_scanned_cutoff_per_query
+  airport_bytes_scanned_cutoff_per_query = var.airport_bytes_scanned_cutoff_per_query
 }
 
 module "glue_jobs" {

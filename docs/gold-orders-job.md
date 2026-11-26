@@ -53,7 +53,7 @@ The flag is `enable_glue_jobs`. The committed dev tfvars sets it to true, next t
 
 `gold_reviews` stays newline-delimited JSON. Nothing writes it. The raw tables stay JSON. There is no crawler, no Glue trigger, and no Lake Formation change.
 
-The lake bucket itself must stay unchanged. The plan guard rejects a plan that creates, updates, or deletes anything in `module.data_lake`. The script objects live in `module.glue_jobs`, not in the lake module, so the bucket's encryption and lifecycle rules are not edited to upload a file.
+The lake bucket itself must stay unchanged. The plan guard rejects a plan that creates, replaces, or deletes the bucket. An in-place edit of the lifecycle configuration is the airport expiry rules, not this job. The script objects live in `module.glue_jobs`, not in the lake module, so uploading the script does not edit encryption or lifecycle.
 
 ### What the role is allowed to do
 

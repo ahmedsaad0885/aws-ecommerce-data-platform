@@ -16,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ANALYTICS = ROOT / "infra" / "modules" / "analytics"
 TABLES_PATH = ANALYTICS / "tables.json"
+AIRPORT_TABLES_PATH = ANALYTICS / "airport_tables.json"
 QUERIES_JSON = ANALYTICS / "queries.json"
 QUERIES_DIR = ANALYTICS / "queries"
 GOLD_SQL = ROOT / "data" / "schemas" / "sql" / "gold.sql"
@@ -61,6 +62,56 @@ PARQUET_INPUT = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
 PARQUET_OUTPUT = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 TIMESTAMP_FORMATS = "yyyy-MM-dd'T'HH:mm:ss'Z',yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
 PROJECTION_RANGE = "2020-01-01,NOW"
+AIRPORT_PROJECTION_RANGE = "2026-04-01,2026-05-30"
+AIRPORT_CUTOFF = "5368709120"
+AIRPORT_EVENTS = {
+    "raw_airport_passenger_events": {
+        "schema": ROOT / "data" / "schemas" / "json" / "passenger_event.schema.json",
+        "prefix": "raw/airports/passenger_events/",
+        "sample": ROOT / "data" / "samples" / "airports" / "passenger_events.ndjson",
+        "avro": ROOT / "data" / "schemas" / "avro" / "passenger_event.avsc",
+    },
+    "raw_airport_flight_events": {
+        "schema": ROOT / "data" / "schemas" / "json" / "flight_event.schema.json",
+        "prefix": "raw/airports/flight_events/",
+        "sample": ROOT / "data" / "samples" / "airports" / "flight_events.ndjson",
+        "avro": ROOT / "data" / "schemas" / "avro" / "flight_event.avsc",
+    },
+    "raw_airport_fuel_records": {
+        "schema": ROOT / "data" / "schemas" / "json" / "fuel_record.schema.json",
+        "prefix": "raw/airports/fuel_records/",
+        "sample": ROOT / "data" / "samples" / "airports" / "fuel_records.ndjson",
+        "avro": ROOT / "data" / "schemas" / "avro" / "fuel_record.avsc",
+    },
+    "raw_airport_weather_reports": {
+        "schema": ROOT / "data" / "schemas" / "json" / "weather_report.schema.json",
+        "prefix": "raw/airports/weather_reports/",
+        "sample": ROOT / "data" / "samples" / "airports" / "weather_reports.ndjson",
+        "avro": ROOT / "data" / "schemas" / "avro" / "weather_report.avsc",
+    },
+}
+AIRPORT_REFERENCE = {
+    "raw_airport_airports": {
+        "schema": ROOT / "data" / "schemas" / "json" / "airport.schema.json",
+        "prefix": "raw/airports/reference/airports/",
+        "sample": ROOT / "data" / "samples" / "airports" / "airports.ndjson",
+    },
+    "raw_airport_airlines": {
+        "schema": ROOT / "data" / "schemas" / "json" / "airline.schema.json",
+        "prefix": "raw/airports/reference/airlines/",
+        "sample": ROOT / "data" / "samples" / "airports" / "airlines.ndjson",
+    },
+    "raw_airport_aircraft_types": {
+        "schema": ROOT / "data" / "schemas" / "json" / "aircraft_type.schema.json",
+        "prefix": "raw/airports/reference/aircraft_types/",
+        "sample": ROOT / "data" / "samples" / "airports" / "aircraft_types.ndjson",
+    },
+    "raw_airport_aircraft": {
+        "schema": ROOT / "data" / "schemas" / "json" / "aircraft.schema.json",
+        "prefix": "raw/airports/reference/aircraft/",
+        "sample": ROOT / "data" / "samples" / "airports" / "aircraft.ndjson",
+    },
+}
 ENGINE = "Athena engine version 3"
 CUTOFF = "10485760"
 
@@ -107,10 +158,17 @@ def _resolve(schema: dict, node: dict) -> dict:
 def athena_type(schema: dict, node: dict) -> str:
     node = _resolve(schema, node)
     kind = node["type"]
+    if isinstance(kind, list):
+        concrete = [item for item in kind if item != "null"]
+        if len(concrete) != 1 or not all(isinstance(item, str) for item in concrete):
+            raise ValueError(f"unsupported JSON Schema type {kind}")
+        return athena_type(schema, {**node, "type": concrete[0]})
     if kind == "string":
         return "string"
     if kind == "integer":
         return "int"
+    if kind == "boolean":
+        return "boolean"
     if kind == "array":
         item = _resolve(schema, node["items"])
         if item.get("type") != "object":
@@ -191,12 +249,80 @@ def sample_key_problems(path: Path, columns: list[str]) -> list[str]:
     return problems
 
 
+def _airport_projection_problems(name: str, table: dict) -> list[str]:
+    problems = []
+    projection = table.get("projection") or {}
+    if projection.get("column") != "dt":
+        problems.append(f"{name} projection column {projection.get('column')!r}")
+    if projection.get("format") != "yyyy-MM-dd":
+        problems.append(f"{name} projection format {projection.get('format')!r}")
+    if projection.get("range") != AIRPORT_PROJECTION_RANGE:
+        problems.append(f"{name} projection range {projection.get('range')!r}")
+    if projection.get("interval") != "1" or projection.get("interval_unit") != "DAYS":
+        problems.append(f"{name} projection interval drifted")
+    if projection.get("template_suffix") != "dt=${dt}/":
+        problems.append(f"{name} template suffix {projection.get('template_suffix')!r}")
+    partitions = [(column["name"], column["type"]) for column in table.get("partition_keys", [])]
+    if partitions != [("dt", "string")]:
+        problems.append(f"{name} partitions {partitions} != [('dt', 'string')]")
+    return problems
+
+
+def airport_problems(tables: dict, terraform: str) -> list[str]:
+    """Columns, prefixes, and projection for the mega airport tables."""
+    problems: list[str] = []
+    expected_names = set(AIRPORT_EVENTS) | set(AIRPORT_REFERENCE)
+    if set(tables) != expected_names:
+        problems.append(f"airport table set {sorted(tables)} != {sorted(expected_names)}")
+    for name, spec in {**AIRPORT_EVENTS, **AIRPORT_REFERENCE}.items():
+        table = tables.get(name)
+        if not isinstance(table, dict):
+            problems.append(f"missing airport table {name}")
+            continue
+        expected = columns_from_schema(spec["schema"])
+        actual = [(column["name"], column["type"]) for column in table.get("columns", [])]
+        if actual != expected:
+            problems.append(f"{name} columns {actual} != schema {expected}")
+        if table.get("prefix") != spec["prefix"]:
+            problems.append(f"{name} prefix {table.get('prefix')!r} != {spec['prefix']!r}")
+        if not str(table.get("description", "")).strip():
+            problems.append(f"{name} needs a description")
+        for column in table.get("columns", []):
+            if not str(column.get("comment", "")).strip():
+                problems.append(f"{name}.{column.get('name')} needs a comment")
+        if name in AIRPORT_EVENTS:
+            problems.extend(_airport_projection_problems(name, table))
+        else:
+            if table.get("partition_keys") not in ([], None):
+                problems.append(f"{name} must not be partitioned")
+            if table.get("projection") is not None:
+                problems.append(f"{name} must not set partition projection")
+        if actual:
+            problems.extend(sample_key_problems(spec["sample"], [column[0] for column in actual]))
+        avro = spec.get("avro")
+        if avro is not None and actual and avro_names(avro) != [column[0] for column in actual]:
+            problems.append(f"Avro field order {avro_names(avro)} != catalog {[column[0] for column in actual]}")
+    if "airport_tables.json" not in terraform:
+        problems.append("analytics module must load airport_tables.json")
+    if 'resource "aws_athena_workgroup" "airports"' not in terraform:
+        problems.append("analytics module is missing the airport workgroup")
+    if "athena-results/airports/" not in terraform:
+        problems.append("airport workgroup results prefix drifted")
+    tfvars = (ROOT / "infra" / "envs" / "dev" / "terraform.tfvars").read_text(encoding="utf-8")
+    if AIRPORT_CUTOFF not in tfvars:
+        problems.append("dev tfvars is missing the 5 GiB airport scan cap")
+    if "10485760" not in tfvars:
+        problems.append("dev tfvars dropped the 10 MiB orders workgroup cap")
+    return problems
+
+
 def contract_problems(
     tables: dict,
     gold_sql: str,
     terraform: str,
     query_descriptions: dict,
     query_sql: dict[str, str],
+    airport_tables: dict | None = None,
 ) -> list[str]:
     problems: list[str] = []
     if set(tables) != set(RAW_TABLES) | set(GOLD_LOCATIONS):
@@ -372,6 +498,8 @@ def contract_problems(
             problems.append("gold order example must use the sample order_date")
         if table_name == "gold_reviews" and "2026-01-16" not in sql:
             problems.append("gold review example must use the sample created_date")
+    if airport_tables is not None:
+        problems.extend(airport_problems(airport_tables, terraform))
     return problems
 
 
@@ -388,6 +516,7 @@ def load_problems() -> list[str]:
         MAIN_TF.read_text(encoding="utf-8"),
         descriptions,
         sql,
+        airport_tables=_load_json(AIRPORT_TABLES_PATH),
     )
 
 
@@ -426,6 +555,16 @@ def self_test() -> list[str]:
     unfiltered["gold_orders_sample_date"] = "SELECT order_id FROM gold_orders LIMIT 20\n"
     if not any("order_date" in item for item in contract_problems(tables, gold_sql, terraform, descriptions, unfiltered)):
         errors.append("self-test allowed a gold query without the partition filter")
+
+    airport = _load_json(AIRPORT_TABLES_PATH)
+    short = json.loads(json.dumps(airport))
+    short["raw_airport_flight_events"]["columns"] = short["raw_airport_flight_events"]["columns"][:-1]
+    if not airport_problems(short, terraform):
+        errors.append("self-test allowed an airport table missing a column")
+    moved = json.loads(json.dumps(airport))
+    moved["raw_airport_passenger_events"]["projection"]["range"] = "2020-01-01,NOW"
+    if not any("projection range" in item for item in airport_problems(moved, terraform)):
+        errors.append("self-test allowed an airport projection range change")
     return errors
 
 
