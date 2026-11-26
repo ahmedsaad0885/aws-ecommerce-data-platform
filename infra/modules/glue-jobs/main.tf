@@ -94,6 +94,12 @@ data "aws_iam_policy_document" "job" {
     resources = [local.bucket_arn]
   }
 
+  # ListBucket is a bucket action. Glue 5 uses EMRFS for s3:// paths.
+  # EMRFS checks parent directories, so a write under gold/orders lists
+  # the prefix gold and gold/, and the temp dir lists glue-temp and
+  # glue-temp/. StringLike * matches the empty string, so folder/*
+  # already matches a list of exactly folder/. The slash lines stay
+  # explicit. There is no empty prefix and no gold/*.
   statement {
     sid       = "ListJobPrefixes"
     effect    = "Allow"
@@ -105,12 +111,20 @@ data "aws_iam_policy_document" "job" {
       variable = "s3:prefix"
       values = [
         local.raw_prefix,
+        "${local.raw_prefix}/",
         "${local.raw_prefix}/*",
+        "gold",
+        "gold/",
         local.gold_prefix,
+        "${local.gold_prefix}/",
         "${local.gold_prefix}/*",
+        "glue-temp",
+        "glue-temp/",
         local.temp_prefix,
+        "${local.temp_prefix}/",
         "${local.temp_prefix}/*",
         local.scripts_prefix,
+        "${local.scripts_prefix}/",
         "${local.scripts_prefix}/*",
       ]
     }
@@ -135,9 +149,16 @@ data "aws_iam_policy_document" "job" {
       "s3:DeleteObject",
       "s3:AbortMultipartUpload",
     ]
+    # gold/orders/* covers partition files and gold/orders/_temporary/*.
+    # EMRFS marks the folder with gold/orders_$folder$, which does not
+    # match gold/orders/*. The key gold/orders/ is that folder plus a slash.
     resources = [
       "${local.bucket_arn}/${local.gold_prefix}/*",
       "${local.bucket_arn}/${local.temp_prefix}/*",
+      "${local.bucket_arn}/${local.gold_prefix}/",
+      "${local.bucket_arn}/${local.temp_prefix}/",
+      "${local.bucket_arn}/${local.gold_prefix}_$folder$",
+      "${local.bucket_arn}/${local.temp_prefix}_$folder$",
     ]
   }
 

@@ -364,6 +364,106 @@ def check_airport_workflow() -> list[str]:
     return errors
 
 
+# EMRFS lists the parents gold and glue-temp, with and without a slash,
+# before it writes gold/orders. StringLike * matches empty, so prefix/*
+# already covers prefix/. No empty prefix and no gold/*.
+GLUE_LIST_PREFIXES = (
+    "local.raw_prefix",
+    '"${local.raw_prefix}/"',
+    '"${local.raw_prefix}/*"',
+    '"gold"',
+    '"gold/"',
+    "local.gold_prefix",
+    '"${local.gold_prefix}/"',
+    '"${local.gold_prefix}/*"',
+    '"glue-temp"',
+    '"glue-temp/"',
+    "local.temp_prefix",
+    '"${local.temp_prefix}/"',
+    '"${local.temp_prefix}/*"',
+    "local.scripts_prefix",
+    '"${local.scripts_prefix}/"',
+    '"${local.scripts_prefix}/*"',
+)
+GLUE_WRITE_RESOURCES = (
+    '"${local.bucket_arn}/${local.gold_prefix}/*"',
+    '"${local.bucket_arn}/${local.temp_prefix}/*"',
+    '"${local.bucket_arn}/${local.gold_prefix}/"',
+    '"${local.bucket_arn}/${local.temp_prefix}/"',
+    '"${local.bucket_arn}/${local.gold_prefix}_$folder$"',
+    '"${local.bucket_arn}/${local.temp_prefix}_$folder$"',
+)
+
+
+def _statement_block(module: str, sid: str) -> str:
+    match = re.search(rf'sid\s+=\s+"{re.escape(sid)}"', module)
+    if match is None:
+        return ""
+    rest = module[match.start() :]
+    nxt = re.search(r"\n  statement \{", rest[1:])
+    if nxt is not None:
+        return rest[: nxt.start() + 1]
+    return rest
+
+
+def _list_values(block: str) -> list[str]:
+    match = re.search(r"values = \[(.*?)\]", block, re.DOTALL)
+    if match is None:
+        return []
+    values = []
+    for line in match.group(1).splitlines():
+        text = line.split("#", 1)[0].strip().rstrip(",")
+        if text:
+            values.append(text)
+    return values
+
+
+def glue_role_policy_errors(module: str | None = None) -> list[str]:
+    """The gold-orders inline policy may list only this job's prefixes."""
+    if module is None:
+        path = ROOT / "infra/modules/glue-jobs/main.tf"
+        if not path.is_file():
+            return ["glue-jobs module is missing"]
+        module = path.read_text(encoding="utf-8")
+    errors = []
+    listing = _statement_block(module, "ListJobPrefixes")
+    if not listing:
+        return ["glue role policy is missing ListJobPrefixes"]
+    if 'actions   = ["s3:ListBucket"]' not in listing and 'actions = ["s3:ListBucket"]' not in listing:
+        errors.append("ListJobPrefixes must allow only s3:ListBucket")
+    if "s3:GetObject" in listing or "s3:*" in listing or "s3:ListBucket*" in listing:
+        errors.append("ListJobPrefixes allows an action other than s3:ListBucket")
+    if "resources = [local.bucket_arn]" not in listing:
+        errors.append("ListBucket must be granted on the lake bucket ARN only")
+    if "${local.bucket_arn}/*" in listing or 'resources = ["*"]' in listing:
+        errors.append("ListBucket must not use an object wildcard or a resource star")
+    if 'test     = "StringLike"' not in listing or 'variable = "s3:prefix"' not in listing:
+        errors.append("ListBucket must be conditioned on StringLike s3:prefix")
+    values = _list_values(listing)
+    if tuple(values) != GLUE_LIST_PREFIXES:
+        errors.append(
+            "ListBucket prefixes must be the four job folders plus the EMRFS "
+            f"parents gold and glue-temp, found {values}"
+        )
+    locate = _statement_block(module, "LocateBucket")
+    if 'actions   = ["s3:GetBucketLocation"]' not in locate or "resources = [local.bucket_arn]" not in locate:
+        errors.append("GetBucketLocation must stay on the lake bucket ARN with no prefix condition")
+    if "s3:prefix" in locate:
+        errors.append("GetBucketLocation must not require s3:prefix")
+    writing = _statement_block(module, "WriteGoldAndTemp")
+    for action in ("s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload"):
+        if action not in writing:
+            errors.append(f"WriteGoldAndTemp is missing {action}")
+    if "s3:*" in writing or "s3:DeleteObject" not in writing:
+        errors.append("WriteGoldAndTemp must keep DeleteObject and must not use s3:*")
+    for resource in GLUE_WRITE_RESOURCES:
+        if resource not in writing:
+            errors.append(f"WriteGoldAndTemp is missing {resource}")
+    if '"${local.bucket_arn}/${local.raw_prefix}' in writing or '"${local.bucket_arn}/gold/' in writing:
+        errors.append("WriteGoldAndTemp must not grant raw/ or the parent gold/ prefix")
+    return errors
+
+
 def check_glue_workflows() -> list[str]:
     errors = []
     apply_path = ROOT / ".github/workflows/dev-glue-job.yml"
@@ -420,6 +520,7 @@ def check_glue_workflows() -> list[str]:
         errors.append("glue-jobs module must declare exactly one IAM role")
     if 'resource "aws_glue_crawler"' in module or module.count('resource "aws_glue_job"') != 1:
         errors.append("glue-jobs module must declare exactly one Glue job and no crawler")
+    errors.extend(glue_role_policy_errors(module))
     return errors
 
 
