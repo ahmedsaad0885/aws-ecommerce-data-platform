@@ -60,14 +60,16 @@ The lake bucket itself must stay unchanged. The plan guard rejects a plan that c
 | Need | Allowed action | Resource |
 | --- | --- | --- |
 | Find the bucket | `s3:GetBucketLocation` | The lake bucket only |
-| List the prefixes the job uses | `s3:ListBucket`, and only when the prefix is raw orders, gold orders, the script prefix, or the temp prefix | The lake bucket only |
+| List the prefixes the job uses | `s3:ListBucket`, only when the prefix is one of the four folders below, in each of three shapes: the exact name, the name with a trailing `/`, and the name followed by `/*` | The lake bucket only |
 | Read events and code | `s3:GetObject` | `raw/order-events/*` and `glue-scripts/*` |
-| Write the result and Spark's temp files | `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:AbortMultipartUpload` | `gold/orders/*` and `glue-temp/gold-orders/*` |
+| Write the result, replace a partition, and clean Spark's temp files | `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:AbortMultipartUpload` | `gold/orders/*`, `glue-temp/gold-orders/*`, the directory markers `gold/orders/` and `glue-temp/gold-orders/`, and the marker objects `gold/orders_$folder$` and `glue-temp/gold-orders_$folder$` |
 | Read the catalog entries it needs | `glue:GetDatabase`, `glue:GetTable`, `glue:GetTables`, `glue:GetPartition`, `glue:GetPartitions` | The dev database, `raw_order_events`, and `gold_orders` |
 | Update one table | `glue:UpdateTable` and the partition create/update/delete calls | `gold_orders` only |
 | Write logs | `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents` | `/aws-glue/*` in this account and region |
 
-`DeleteObject` is what an overwrite needs. Spark replaces the Parquet files in a partition; that deletes the previous objects (versioning keeps an old version as a delete marker). The role cannot delete the raw events, cannot read `raw/reviews/` or `raw/product-catalog/` object bodies, and cannot update `gold_reviews` or the raw tables.
+`DeleteObject` is what an overwrite needs. Spark replaces the Parquet files in a partition; that deletes the previous objects (versioning keeps an old version as a delete marker). The same delete and put also cover the files Spark writes while it is committing, such as `gold/orders/_temporary/...` and `gold/orders/.spark-staging-...`, because those keys are under `gold/orders/`. Glue 5 reads and writes `s3://` paths with EMRFS. EMRFS marks a folder with a zero-byte object named `gold/orders_$folder$`. That key is next to the folder, not inside it, so `gold/orders/*` does not include it. The policy names that one object, and the same kind of object under `glue-temp/gold-orders`. It does not name `gold_$folder$`.
+
+The role cannot delete the raw events, cannot read `raw/reviews/` or `raw/product-catalog/` object bodies, and cannot update `gold_reviews` or the raw tables.
 
 The job writes files straight to S3. Terraform changes the catalog table from JSON to Parquet. The role's `glue:UpdateTable` is there so the job cannot be pointed at a second table later without a policy edit, and so a catalog call from the runtime is limited to `gold_orders`. It is not permission to change `raw_order_events`.
 
@@ -173,13 +175,25 @@ The saved query `gold_orders_sample_date` still filters `order_date = '2026-01-1
 
 ## When something looks wrong
 
+### Why a list denial shows up while the job is writing Parquet
+
+Reading one file and asking which files are in a folder are different permissions. `s3:GetObject` reads one key. `s3:ListBucket` is the question "which keys start with this prefix?" S3 authorizes that question on the bucket, not on the file. Spark asks it while it writes. It has to see the `order_date=` folders that are already there so it can delete those Parquet files and put the new ones in the same place. A role that can put and delete objects, and still cannot list, fails with `not authorized to perform: s3:ListBucket` and `no identity-based policy allows the s3:ListBucket action`. The objects were never the missing piece.
+
+The folder name is the prefix on that request. Hadoop sends three shapes, and the policy names all three:
+
+- `gold/orders` with no slash. This is the existence check. The filesystem asks whether that prefix is there before it writes.
+- `gold/orders/` with a slash on the end. This is "list this folder."
+- `gold/orders/order_date=2026-01-15/...`, and Spark's temporary files under `gold/orders/_temporary/` and `gold/orders/.spark-staging-...`. The pattern `gold/orders/*` matches those longer names.
+
+The same three shapes are allowed for `raw/order-events`, `glue-temp/gold-orders`, and `glue-scripts`. The parent folder `gold/` is not. A list whose prefix is `gold/` would also return `gold/reviews`. While creating `gold/orders`, the S3A connector may look at `gold/` and, when that list is denied, it stops walking upward and still creates the orders folder. An empty prefix is a list of the whole bucket, and it is not allowed either.
+
 | What you see | What it usually means |
 | --- | --- |
 | Apply says `AccessDenied` on `iam:` or mentions the free plan | Stop. Report the error. Do not widen the caller. |
 | `SUCCEEDED` and `Wrote 0` | `raw/order-events/` had no events the contract accepts. Check the prefix in the S3 console. |
 | `FAILED` and the log says `order event rejected` | A line broke the gold contract (bad amount, unknown event type, empty items). The job does not write a partial gold result for that failure. Fix the raw line. Do not relax the rule in the job only. |
 | Job fails with `sts:AssumeRole` | The trust policy refused the call. Stop and report the error. Do not delete the `aws:SourceAccount` / `aws:SourceArn` conditions, and do not point the job at the CI user's keys. |
-| Job fails with `s3:ListBucket` denied | The role may list only the four prefixes in the policy. Stop and report the error. Do not grant `s3:*`. |
+| Job fails with `s3:ListBucket` denied | Spark asked to list a prefix outside the four folders, or outside the three shapes (exact name, trailing slash, and `/*`). Copy the error and stop. Do not grant `s3:*`, an empty prefix, or `gold/`. |
 | Athena error about the JSON SerDe on `gold_orders` | The catalog update did not apply, or an old NDJSON object is still in `gold/orders/`. The table is Parquet now. Old JSON objects in that prefix will not read. |
 | Gold count is canceled for the scan cap | The `WHERE order_date` filter is missing, or unexpected files landed under `gold/orders/`. The cap is doing its job. |
 | Lake Formation denial | Stop. This job does not grant Lake Formation admin. |

@@ -94,6 +94,13 @@ data "aws_iam_policy_document" "job" {
     resources = [local.bucket_arn]
   }
 
+  # ListBucket is a bucket action. The prefix condition keeps it to this
+  # job's folders. Hadoop sends three shapes for each folder: the exact
+  # name with no slash (existence check), the name with a trailing slash
+  # (list that folder), and a longer name for a file inside (the /*).
+  # The parent gold/ is not included. Listing it would also return
+  # gold/reviews. S3A stops walking parents when that list is denied and
+  # still creates gold/orders.
   statement {
     sid       = "ListJobPrefixes"
     effect    = "Allow"
@@ -105,12 +112,16 @@ data "aws_iam_policy_document" "job" {
       variable = "s3:prefix"
       values = [
         local.raw_prefix,
+        "${local.raw_prefix}/",
         "${local.raw_prefix}/*",
         local.gold_prefix,
+        "${local.gold_prefix}/",
         "${local.gold_prefix}/*",
         local.temp_prefix,
+        "${local.temp_prefix}/",
         "${local.temp_prefix}/*",
         local.scripts_prefix,
+        "${local.scripts_prefix}/",
         "${local.scripts_prefix}/*",
       ]
     }
@@ -135,9 +146,17 @@ data "aws_iam_policy_document" "job" {
       "s3:DeleteObject",
       "s3:AbortMultipartUpload",
     ]
+    # gold/orders/* covers partition files, gold/orders/_temporary/*, and
+    # gold/orders/.spark-staging-*. The key gold/orders_$folder$ is the
+    # EMRFS marker for the folder itself and does not match gold/orders/*.
+    # The object whose key is gold/orders/ is the S3A directory marker.
     resources = [
       "${local.bucket_arn}/${local.gold_prefix}/*",
       "${local.bucket_arn}/${local.temp_prefix}/*",
+      "${local.bucket_arn}/${local.gold_prefix}/",
+      "${local.bucket_arn}/${local.temp_prefix}/",
+      "${local.bucket_arn}/${local.gold_prefix}_$folder$",
+      "${local.bucket_arn}/${local.temp_prefix}_$folder$",
     ]
   }
 
