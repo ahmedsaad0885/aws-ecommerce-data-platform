@@ -327,16 +327,20 @@ def check_land_workflow() -> list[str]:
     return errors
 
 
-# Hadoop lists each folder three ways. prefix/* does not match the exact
-# name or the trailing-slash form, so all three are required. The parent
-# gold/ is intentionally absent: that list would also return gold/reviews.
+# EMRFS lists the parents gold and glue-temp, with and without a slash,
+# before it writes gold/orders. StringLike * matches empty, so prefix/*
+# already covers prefix/. No empty prefix and no gold/*.
 GLUE_LIST_PREFIXES = (
     "local.raw_prefix",
     '"${local.raw_prefix}/"',
     '"${local.raw_prefix}/*"',
+    '"gold"',
+    '"gold/"',
     "local.gold_prefix",
     '"${local.gold_prefix}/"',
     '"${local.gold_prefix}/*"',
+    '"glue-temp"',
+    '"glue-temp/"',
     "local.temp_prefix",
     '"${local.temp_prefix}/"',
     '"${local.temp_prefix}/*"',
@@ -400,7 +404,10 @@ def glue_role_policy_errors(module: str | None = None) -> list[str]:
         errors.append("ListBucket must be conditioned on StringLike s3:prefix")
     values = _list_values(listing)
     if tuple(values) != GLUE_LIST_PREFIXES:
-        errors.append(f"ListBucket prefixes must be the four job folders in three shapes, found {values}")
+        errors.append(
+            "ListBucket prefixes must be the four job folders plus the EMRFS "
+            f"parents gold and glue-temp, found {values}"
+        )
     locate = _statement_block(module, "LocateBucket")
     if 'actions   = ["s3:GetBucketLocation"]' not in locate or "resources = [local.bucket_arn]" not in locate:
         errors.append("GetBucketLocation must stay on the lake bucket ARN with no prefix condition")
