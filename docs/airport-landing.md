@@ -58,7 +58,9 @@ Each prefix receives only `part-00000.ndjson` and, when a stream is larger than 
 
 A second run of the same date deletes the objects under that date's four prefixes and writes the new parts. It does not touch another date, the reference tables (unless the reference job runs again), `raw/order-events/`, `gold/`, `athena-results/`, or the state bucket. The reference job replaces only the four `raw/airports/reference/<name>/` prefixes.
 
-After the copy, the job calls `head-object` on every file and requires the S3 `ContentLength` to equal the local file size. A mismatch fails the job. The log prints rows, bytes, and object count for each stream.
+Before the first delete, the job calls `aws s3api head-bucket` on `ecom-737334244495-dev-lake` with `--expected-bucket-owner 737334244495`. That call fails if the bucket belongs to another account, and the job stops before it deletes anything. `aws s3 cp` and `aws s3 rm` do not accept `--expected-bucket-owner` (it is an `s3api` flag), so those copy and delete commands do not carry it.
+
+After the copy, the job calls `aws s3api head-object` on every file, again with `--expected-bucket-owner`, and requires the S3 `ContentLength` to equal the local file size. A mismatch fails the job. The log prints rows, bytes, and object count for each stream.
 
 ## How to run it
 
@@ -130,11 +132,17 @@ The GitHub runners are the free minutes that come with the repository. Generatin
 The 30-day lifecycle rule is the normal cleanup. You do not have to delete by hand. If you want the bytes gone sooner, delete only the airport prefix:
 
 ```bash
+aws s3api head-bucket \
+  --bucket ecom-737334244495-dev-lake \
+  --expected-bucket-owner 737334244495 \
+  --region eu-north-1
+
 aws s3 rm s3://ecom-737334244495-dev-lake/raw/airports/ \
   --recursive \
-  --region eu-north-1 \
-  --expected-bucket-owner 737334244495
+  --region eu-north-1
 ```
+
+Run `head-bucket` first and stop if it fails. `aws s3 rm` cannot take `--expected-bucket-owner`; the owner check is the `s3api` call above.
 
 The trailing slash after `raw/airports` matters. `raw/` is the parent of the order files and the catalog files. This command must not be pointed at `raw/` alone, at `gold/`, at `athena-results/`, or at the state bucket `ecom-737334244495-dev-tfstate`.
 

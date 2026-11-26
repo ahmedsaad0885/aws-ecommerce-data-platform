@@ -68,12 +68,33 @@ def test_delete_argv_is_scoped_to_one_day_prefix():
     argv = land.rm_argv(prefix)
     assert argv[:4] == ["aws", "s3", "rm", f"s3://{land.BUCKET}/{prefix}"]
     assert "--recursive" in argv
-    assert "--expected-bucket-owner" in argv
-    assert land.ACCOUNT in argv
+    assert "--expected-bucket-owner" not in argv
     joined = " ".join(argv)
     assert "gold/" not in joined
     assert "raw/order-events" not in joined
     assert "s3://ecom-737334244495-dev-tfstate" not in joined
+
+
+def test_high_level_s3_commands_omit_expected_bucket_owner():
+    """aws s3 cp/rm/sync/ls reject --expected-bucket-owner. s3api keeps it."""
+    prefix = "raw/airports/passenger_events/dt=2026-04-01/"
+    commands = land.aws_argv(Path("/tmp/day"), prefix, prefix + "part-00000.ndjson")
+    high_level = [argv for argv in commands if argv[:2] == ["aws", "s3"]]
+    assert {argv[2] for argv in high_level} >= {"rm", "cp"}
+    for argv in high_level:
+        assert "--expected-bucket-owner" not in argv
+    guard = land.head_bucket_argv()
+    assert guard[:3] == ["aws", "s3api", "head-bucket"]
+    assert guard[guard.index("--bucket") + 1] == land.BUCKET
+    assert guard[guard.index("--expected-bucket-owner") + 1] == land.ACCOUNT
+    assert guard[guard.index("--region") + 1] == land.REGION
+    head = land.head_argv(prefix + "part-00000.ndjson")
+    assert head[2] == "head-object"
+    assert head[head.index("--expected-bucket-owner") + 1] == land.ACCOUNT
+    cp = land.cp_argv(Path("/tmp/day"), prefix)
+    assert cp[cp.index("--sse") + 1] == "AES256"
+    assert "--recursive" in cp
+    assert "--only-show-errors" in cp
 
 
 def test_generate_commands_keep_the_60_day_horizon():

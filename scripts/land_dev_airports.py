@@ -184,6 +184,25 @@ def _s3_uri(prefix: str) -> str:
     return f"s3://{BUCKET}/{prefix}"
 
 
+def head_bucket_argv() -> list[str]:
+    """Confirm the lake bucket owner before any high-level s3 command.
+
+    ``aws s3 cp`` and ``aws s3 rm`` do not accept ``--expected-bucket-owner``.
+    That flag is valid on ``aws s3api`` only (CLI v2 reference for ``s3`` vs ``s3api``).
+    """
+    return [
+        "aws",
+        "s3api",
+        "head-bucket",
+        "--bucket",
+        BUCKET,
+        "--expected-bucket-owner",
+        ACCOUNT,
+        "--region",
+        REGION,
+    ]
+
+
 def cleanup_argv() -> list[str]:
     """Delete only raw/airports/. Not raw/, and not the orders prefixes."""
     prefix = CLEANUP_PREFIX
@@ -197,8 +216,6 @@ def cleanup_argv() -> list[str]:
         "--recursive",
         "--region",
         REGION,
-        "--expected-bucket-owner",
-        ACCOUNT,
         "--only-show-errors",
     ]
 
@@ -212,8 +229,6 @@ def rm_argv(prefix: str) -> list[str]:
         "--recursive",
         "--region",
         REGION,
-        "--expected-bucket-owner",
-        ACCOUNT,
         "--only-show-errors",
     ]
 
@@ -228,8 +243,6 @@ def cp_argv(local: Path, prefix: str) -> list[str]:
         "--recursive",
         "--region",
         REGION,
-        "--expected-bucket-owner",
-        ACCOUNT,
         "--sse",
         "AES256",
         "--only-show-errors",
@@ -255,6 +268,17 @@ def head_argv(key: str) -> list[str]:
         REGION,
         "--output",
         "json",
+    ]
+
+
+def aws_argv(local: Path, prefix: str, key: str) -> list[list[str]]:
+    """Every AWS command this script can build for one prefix."""
+    return [
+        head_bucket_argv(),
+        rm_argv(prefix),
+        cp_argv(local, prefix),
+        head_argv(key),
+        cleanup_argv(),
     ]
 
 
@@ -299,6 +323,12 @@ def require_confirm() -> None:
     confirm = os.environ.get(CONFIRM_ENV, "")
     if confirm != CONFIRM:
         raise RuntimeError(f"refusing upload: {CONFIRM_ENV} must be {CONFIRM!r}")
+
+
+def ensure_bucket_owner(runner) -> None:
+    """One owner check for the job. A failure stops the job before any delete."""
+    require_confirm()
+    runner(head_bucket_argv())
 
 
 def upload_prefix(local: Path, prefix: str, runner) -> dict[str, int]:
@@ -347,6 +377,7 @@ def cmd_dates(start: str, days: str, github_output: Path | None) -> int:
 
 
 def cmd_upload_reference(source: Path, record_path: Path) -> int:
+    ensure_bucket_owner(_run)
     streams = {}
     for name in REFERENCE_STREAMS:
         streams[name] = upload_prefix(source / name, reference_prefix(name), _run)
@@ -358,6 +389,7 @@ def cmd_upload_reference(source: Path, record_path: Path) -> int:
 
 def cmd_upload_day(source: Path, day: str, record_path: Path) -> int:
     landing_dates(day, "1")
+    ensure_bucket_owner(_run)
     streams = {}
     for name in EVENT_STREAMS:
         streams[name] = upload_prefix(
@@ -473,6 +505,16 @@ def cmd_self_test() -> int:
     rm = rm_argv(good)
     if rm[3] != f"s3://{BUCKET}/{good}" or "--recursive" not in rm or "gold/" in " ".join(rm):
         errors.append(f"rm argv is unsafe: {rm}")
+    sample = aws_argv(Path("/tmp/part"), good, good + "part-00000.ndjson")
+    for command in sample:
+        if command[:2] == ["aws", "s3"] and "--expected-bucket-owner" in command:
+            errors.append(f"high-level s3 command takes an s3api-only flag: {command}")
+    guard = head_bucket_argv()
+    if guard[:3] != ["aws", "s3api", "head-bucket"] or ACCOUNT not in guard or BUCKET not in guard:
+        errors.append(f"bucket owner guard drifted: {guard}")
+    head = head_argv(good + "part-00000.ndjson")
+    if head[2] != "head-object" or "--expected-bucket-owner" not in head:
+        errors.append(f"head-object lost the owner check: {head}")
     argv = day_generate_argv(Path("/tmp/out"), "2026-04-02")
     if "--days" in argv or "--skip-reference" not in argv or "--date" not in argv:
         errors.append(f"day generate argv drifted: {argv}")
