@@ -66,7 +66,10 @@ REQUIRED = [
     "services/llm/src/summarize.py",
     ".github/workflows/dev-data-lake.yml",
     ".github/workflows/land-dev-raw.yml",
+    ".github/workflows/land-dev-airports.yml",
     "scripts/land_dev_raw.py",
+    "scripts/land_dev_airports.py",
+    "docs/airport-landing.md",
     "pipelines/datasets/landing.py",
     "pipelines/tests/test_lake_layout.py",
     "scripts/dev_state_bucket.sh",
@@ -327,6 +330,55 @@ def check_land_workflow() -> list[str]:
         errors.append("land-dev-raw workflow must contain exactly one upload command")
     if text.count("land_dev_raw.py plan") != 1:
         errors.append("land-dev-raw workflow must contain exactly one plan command")
+    return errors
+
+
+def check_airport_land_workflow() -> list[str]:
+    path = ROOT / ".github/workflows/land-dev-airports.yml"
+    if not path.is_file():
+        return []
+    text = path.read_text(encoding="utf-8")
+    errors = []
+    for banned in (
+        "pull_request:",
+        "id-token:",
+        "role-to-assume",
+        "terraform",
+        "ecom-737334244495-dev-tfstate",
+        "s3 rm",
+        "s3 sync",
+        "--delete",
+        "gold/",
+    ):
+        if banned in text:
+            errors.append(f"land-dev-airports workflow contains {banned.strip()!r}")
+    for required in (
+        "name: Dev airports land",
+        "workflow_dispatch:",
+        "land-dev-airports",
+        "start_date:",
+        'default: "2026-04-01"',
+        "days:",
+        'default: "2"',
+        "max-parallel: 20",
+        "--reference-only",
+        "--skip-reference",
+        "--scale mega",
+        "--seed 42",
+        "scripts/land_dev_airports.py upload-reference",
+        "scripts/land_dev_airports.py upload-day",
+        "scripts/land_dev_airports.py summarize",
+        "eu-north-1",
+        "737334244495",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "force-skip-oidc",
+        "refs/heads/main",
+        "if: github.event.inputs.confirm == 'land-dev-airports' && github.ref != 'refs/heads/main'",
+        "if: github.event.inputs.confirm == 'land-dev-airports' && github.ref == 'refs/heads/main'",
+    ):
+        if required not in text:
+            errors.append(f"land-dev-airports workflow is missing {required}")
     return errors
 
 
@@ -614,6 +666,19 @@ def self_test_guards() -> list[str]:
             or landing_check.stderr.strip()
             or "raw landing self-test failed"
         )
+
+    airport_landing = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/land_dev_airports.py"), "self-test"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if airport_landing.returncode != 0:
+        errors.append(
+            airport_landing.stdout.strip()
+            or airport_landing.stderr.strip()
+            or "airport landing self-test failed"
+        )
     return errors
 
 
@@ -645,6 +710,7 @@ def main() -> int:
         + check_dev_lake_scope()
         + check_dev_workflow()
         + check_land_workflow()
+        + check_airport_land_workflow()
         + check_glue_workflows()
         + check_airport_workflow()
         + self_test_guards()

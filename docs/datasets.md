@@ -93,4 +93,4 @@ The beefy e-commerce files can be copied into the dev lake by a manual GitHub Ac
 
 The flight, passenger, weather, and fuel streams have Avro twins under [data/schemas/avro/](../data/schemas/avro/). Reference extracts are JSON Schema only, same as the product catalog and reviews. The domain write-up, including the fuel formula, is [airport-data-model.md](airport-data-model.md).
 
-These files are a second raw source. They are not an input to the gold order transform, and this repository does not register them in Glue.
+These files are a second raw source. They are not an input to the gold order transform. The mega layout and the Glue tables are in [airport-mega-dataset.md](airport-mega-dataset.md). How to upload a day is in [airport-landing.md](airport-landing.md).

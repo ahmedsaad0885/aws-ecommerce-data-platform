@@ -236,3 +236,5 @@ Glue 5 uses EMRFS for `s3://` paths. EMRFS lists parent prefixes, not only the l
 - `glue-temp/`
 
 The gold-orders role on `main` already lists `gold`, `gold/`, `glue-temp`, and `glue-temp/` for the orders job. The airport role is a separate change. Do not widen the orders role in that step unless the airport job assumes that same role.
+
+Landing the generated files into the bucket is a separate manual workflow. The steps, the two-day test, the Athena check, and the storage cost are in [airport-landing.md](airport-landing.md).
